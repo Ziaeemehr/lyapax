@@ -7,12 +7,21 @@ bookkeeping (a delay ring buffer's tangent, in the DDE case) — see
 notes/milestones.md.
 
 Method: propagate a (d, k) matrix of tangent vectors alongside the
-trajectory using the exact Jacobian of ``step_fn`` at each step
-(``jax.jacfwd`` — dense; matrix-free jvp-based propagation is deferred to
-M6 per notes/milestones.md, "start dense, don't add matrix-free machinery
-before a concrete network size needs it"). Every ``renorm_every`` steps,
-QR-decompose the tangent matrix, accumulate ``log|diag(R)|``, and replace
-the tangent matrix with the orthonormal factor ``Q`` (Benettin's method).
+trajectory. Every ``renorm_every`` steps, QR-decompose the tangent matrix,
+accumulate ``log|diag(R)|``, and replace the tangent matrix with the
+orthonormal factor ``Q`` (Benettin's method).
+
+Tangent propagation is ``jax.jvp``-based (M6), not ``jax.jacfwd``-based: one
+``jax.jvp`` call per tracked column, batched via ``jax.vmap`` — cost is O(k)
+forward-mode passes per raw step, not O(d) for a dense Jacobian. M1-M5 used
+dense ``jax.jacfwd`` here deliberately ("start dense, don't add matrix-free
+machinery before a concrete need" — see notes/milestones.md); M4's DDE
+engine (``lyapax.dde.lyapunov_spectrum_dde``) already needed and validated
+this exact jvp/vmap pattern for a much larger augmented ``(state, buf)``
+dimension, so M6 carries it back here for the plain (no ring buffer) case,
+where it matters whenever ``k < d`` (the partial-spectrum case ``jacfwd``
+can't exploit, since it always computes all ``d`` columns regardless of
+how many are actually tracked).
 """
 from __future__ import annotations
 
@@ -128,9 +137,14 @@ def lyapunov_spectrum(
         notes/milestones.md)."""
         def _inner(carry_inner, _):
             state_i, Y_i = carry_inner
-            jac = jax.jacfwd(step_fn)(state_i)
-            new_state = step_fn(state_i)
-            new_Y = jac @ Y_i
+
+            def _single_column(y_col):
+                return jax.jvp(step_fn, (state_i,), (y_col,))
+
+            new_state_rep, new_Y = jax.vmap(
+                _single_column, in_axes=-1, out_axes=(0, -1)
+            )(Y_i)
+            new_state = new_state_rep[0]
             return (new_state, new_Y), None
 
         (state, Y), _ = jax.lax.scan(_inner, (state, Y), None, length=n_substeps)

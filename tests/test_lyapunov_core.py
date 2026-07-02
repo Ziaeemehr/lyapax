@@ -4,6 +4,7 @@ None of these compare against anything in lyapunov-master/ -- references
 are exact analytic values, structural invariants (constant/derivable
 divergence), or published literature figures, per that doc's guidance.
 """
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -172,3 +173,40 @@ def test_partial_spectrum_matches_full_spectrum_leading_columns():
     # be numerically identical) -- the tolerance matches the finite-time
     # convergence noise seen in test_lorenz_lambda1_matches_published_value.
     assert abs(float(partial.exponents[0]) - float(full.exponents[0])) < 0.01
+
+
+# ---------------------------------------------------------------------------
+# M6 -- engine-mechanism check: jvp/vmap tangent propagation vs dense jacfwd
+# ---------------------------------------------------------------------------
+
+def test_tangent_propagation_matches_dense_jacfwd():
+    """Directly validates the jvp/vmap machinery in lyapunov_spectrum's
+    _advance (M6), independent of any downstream QR/statistical
+    convergence: one raw step's tangent action (dY = J @ Y) computed via
+    the vmapped-jvp approach must match a dense jax.jacfwd of the same
+    step, to machine precision. Not a public API -- an ad hoc reference
+    computed inline, so the library doesn't need a second, dense-jacfwd
+    code path just to test the jvp one. Mirrors
+    tests/test_dde.py::test_tangent_propagation_matches_dense_jacfwd,
+    the analogous check M4 wrote for the DDE engine's jvp/vmap mechanism."""
+    A = jnp.array([[-0.5, 1.2, 0.0], [-1.2, -0.5, 0.3], [0.1, -0.2, -0.8]])
+    rhs = systems.linear_system(A)
+    dt = 1e-2
+    step_fn = rk4_step(rhs, dt)
+
+    state0 = jnp.array([0.3, -0.7, 0.5])
+    d = state0.shape[0]
+    dense_jac = jax.jacfwd(step_fn)(state0)
+
+    key = jax.random.PRNGKey(0)
+    Y0, _ = jnp.linalg.qr(jax.random.normal(key, (d, d), dtype=jnp.float64))
+
+    def _single_column(y_col):
+        return jax.jvp(step_fn, (state0,), (y_col,))
+
+    _new_state_rep, computed_action = jax.vmap(
+        _single_column, in_axes=-1, out_axes=(0, -1)
+    )(Y0)
+    expected_action = dense_jac @ Y0
+
+    np.testing.assert_allclose(np.array(computed_action), np.array(expected_action), atol=1e-10)

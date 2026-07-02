@@ -4,6 +4,8 @@ user-written coupling function (no import from lyapax.coupling at all)
 works exactly like a built-in one -- this is the concrete answer to "how
 does a user provide a custom coupling."
 """
+import time
+
 import jax.numpy as jnp
 import numpy as np
 
@@ -168,3 +170,36 @@ def test_kuramoto_coupled_smoke():
 
     assert result.exponents.shape == (3,)
     assert np.all(np.isfinite(np.array(result.exponents)))
+
+
+# ---------------------------------------------------------------------------
+# M6 -- scale benchmark: the actual point of switching to jvp/vmap tangent
+# propagation -- a network with d well beyond what dense jacfwd computes
+# cheaply per step when only a few (k) exponents are tracked. Mirrors
+# tests/test_dde.py::test_delayed_network_benchmark_scale, the analogous
+# scale check M4 wrote when the DDE engine got this same mechanism first.
+# ---------------------------------------------------------------------------
+
+def test_large_network_benchmark_scale():
+    n_nodes = 200
+    weights = jnp.ones((n_nodes, n_nodes)) - jnp.eye(n_nodes)
+    model = _kuramoto_model(omega=1.0)
+    dfun = build_jax_dfun(model)
+    params = {"omega": jnp.linspace(-1.0, 1.0, n_nodes), "G": 1.0}
+    dt = 1e-2
+    step = make_network_step_fn(
+        dfun, weights, model.cvar_indices, params, dt,
+        coupling_fn=kuramoto_coupling(alpha=0.0),
+    )
+    state0 = jnp.linspace(0.0, 2 * jnp.pi, n_nodes, endpoint=False)
+    assert state0.shape[0] > 100  # representative of "beyond dense-jacfwd-cheap" scale
+
+    t0 = time.perf_counter()
+    result = lyapunov_spectrum(
+        step, state0=state0, dt=dt, n_steps=2_000, k=5, renorm_every=10, t_transient=5.0,
+    )
+    elapsed = time.perf_counter() - t0
+
+    assert result.exponents.shape == (5,)
+    assert np.all(np.isfinite(np.array(result.exponents)))
+    assert elapsed < 30.0  # generous CI ceiling

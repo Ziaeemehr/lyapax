@@ -483,12 +483,39 @@ already solved.
 
 ## M6 — Performance & usability
 
-- Matrix-free tangent propagation via `jax.jvp` (avoid materializing the
-  full Jacobian) for large `d * n_nodes` — **done for the DDE path** as
-  part of M4's redesign (`lyapax.dde.lyapunov_spectrum_dde`); **still open
-  for the plain ODE/zero-delay-network path** (`lyapax.core.lyapunov_spectrum`
-  still uses dense `jacfwd`, a bottleneck for large *non-delayed* networks
-  specifically).
+- **Matrix-free tangent propagation via `jax.jvp` for the plain ODE/zero-delay-network
+  path — ✅ done (this session).** Was already done for the DDE path as part
+  of M4's redesign (`lyapax.dde.lyapunov_spectrum_dde`); `lyapax.core.lyapunov_spectrum`
+  (M1) still used dense `jax.jacfwd` per raw step, which computes all `d`
+  Jacobian columns regardless of how many (`k`) are actually tracked — a
+  bottleneck specifically for large non-delayed networks run with `k < d`
+  (the whole point of the partial-spectrum feature from M1/M2). Fixed by
+  giving `core.py`'s `_advance` the same `jax.jvp`-per-column,
+  `jax.vmap`-batched pattern `dde.py` already used and validated: cost is
+  now O(k) forward-mode passes per raw step, not O(d).
+  - **Behavior-preserving, not a new algorithm:** `jax.jacfwd` is itself
+    implemented as `vmap(jvp)` over the `d` standard basis columns, so this
+    change only skips computing the `d-k` untracked columns jacfwd would
+    otherwise waste time on — the math per tracked column is identical.
+    Confirmed both ways: all 27 pre-existing tests pass unchanged (no
+    tolerance changes needed anywhere), and a new mechanism check,
+    `test_tangent_propagation_matches_dense_jacfwd` (mirroring the
+    identically-named DDE test from M4), verifies the vmapped-jvp tangent
+    action equals an ad hoc dense-`jacfwd` reference to `1e-10` on a small
+    3D linear system — independent of any downstream QR/statistical
+    convergence.
+  - **Measured speedup:** a 200-node Kuramoto network (`d=200`), tracking
+    `k=5` exponents, 200 raw steps: dense `jacfwd` `5.41s` vs. jvp/vmap
+    `0.24s` — **~23x**, both JIT-compiled and timed after a warmup call (ad
+    hoc benchmark script, not part of the test suite). `k` this small
+    relative to `d` is exactly the partial-spectrum regime M1/M2 built for
+    but M1's dense engine couldn't exploit until now.
+  - New scale-benchmark regression test, `test_large_network_benchmark_scale`
+    in `tests/test_network.py` (mirrors `test_dde.py`'s
+    `test_delayed_network_benchmark_scale` from M4): the same 200-node
+    network, `k=5`, `n_steps=2_000` — finite output, well under the 30s CI
+    ceiling.
+  - Total suite: 29/29 passing (27 prior + the 2 new tests above).
 - `vmap` over parameter grids / initial conditions for LE-vs-parameter
   sweeps (bifurcation-diagram-style), mirroring `vbi`'s `JaxSweeper` pattern
   but not reusing its code (per the vendoring decision).
