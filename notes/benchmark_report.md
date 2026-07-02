@@ -1,10 +1,9 @@
 # Benchmark & Accuracy Report — lyapax vs. published packages
 
-**Status: draft skeleton, paused.** Structure and known values filled in;
-live cross-tool runs (jitcode/jitcdde/ChaosTools.jl) are set up but not yet
-executed/recorded — picking back up here once the M6/M7 milestone work
-(`notes/milestones.md`) is finished. See "Open TODOs" at the bottom for
-exactly where to resume.
+**Status: populated.** All cross-tool runs below (jitcode, jitcdde,
+ChaosTools.jl) are executed and recorded, reproducibly, via
+`benchmarks/collect_results.py`. Not yet covered: Tier 4.3 (2-node delayed
+network) against jitcdde — see "Open TODOs".
 
 ## Purpose
 
@@ -100,6 +99,31 @@ lyapax itself.
 - lyapax defaults to `float64` (`notes/milestones.md`, risk #1); confirm
   each other tool's working precision before comparing digits, not just
   headline values.
+- **ChaosTools.jl's adaptive step size needs an explicit `dtmax` cap for
+  globally-stable (non-chaotic) systems, and this is not a tuning nicety —
+  without it, the Tier 0.1 linear-ODE and Tier 3.1 network results were
+  wrong by orders of magnitude** (recovering ~0 for the most negative
+  eigenvalue instead of `-5`, and a garbled full spectrum for the network).
+  Root cause, confirmed directly by stepping `TangentDynamicalSystem`
+  manually: both of these systems' trajectories decay toward the origin
+  (unlike Lorenz/Rössler, which stay on a bounded chaotic attractor and
+  never approach a fixed point). Once `|u|` falls near Tsit5's default
+  `abstol`, the state's error budget is trivially satisfied and the
+  adaptive step size balloons — confirmed the reference trajectory itself
+  measurably grew again in isolation for a plain `ẋ=-x` test case, i.e.
+  the ODE was no longer being resolved at all, not just the deviation
+  vectors riding along with it. Fixed by passing
+  `diffeq=(alg=Tsit5(), dtmax=Δt)` (`Δt` = the Benettin renormalization
+  interval) to `CoupledODEs` for every ODE system here, matching the
+  cadence lyapax's fixed `dt` and jitcode's `dopri5` default already
+  enforce implicitly. Verified this reproduces the exact eigenvalues to
+  near machine precision (see Results below) and does not change the
+  Lorenz/Rössler numbers (bounded attractor, so `dtmax` was never load-bearing
+  there — added anyway for uniform settings across systems). See
+  `benchmarks/chaostools/linear_ode.jl`'s comment for the full derivation.
+  This looks like a genuine, reportable footgun in ChaosTools.jl's
+  documented defaults for non-chaotic systems, not a lyapax-side finding —
+  worth a short upstream issue at some point, out of scope here.
 
 ## Environment
 
@@ -107,8 +131,8 @@ lyapax itself.
 |---|---|---|
 | lyapax | `0.0.1` (editable) | `/home/ziaee/envs/lyapax` |
 | JAX | `0.10.2` | CPU only, `jax_enable_x64=True` |
-| jitcode | `1.7.3` | installed, not yet exercised |
-| jitcdde | `1.8.3` | installed, not yet exercised |
+| jitcode | `1.7.3` | |
+| jitcdde | `1.8.3` | |
 | symengine | `0.14.1` | jitcode/jitcdde's symbolic backend |
 | Julia | `1.12.1` | installed (`juliaup`) |
 | ChaosTools.jl | `3.5.4` | |
@@ -119,82 +143,203 @@ lyapax itself.
 
 ## Results — Accuracy
 
-*Not yet populated.* Each table below will have one row per system, columns
-for lyapax / jitcode-or-jitcdde / ChaosTools.jl / published value, and the
-max-abs-difference between lyapax and each reference.
+Raw numbers below come from `benchmarks/{lyapax,jitcode,jitcdde,chaostools}/`,
+runnable end-to-end via `python benchmarks/collect_results.py`
+(→ `benchmarks/results.json`) — the numbers quoted here are from that
+canonical run. All three tools independently implement each system from
+the written equations (Methodology, above) — agreement is not an artifact
+of a shared translation.
+
+**Reproducibility note:** lyapax (fixed seed) and ChaosTools.jl (identity
+initial deviation vectors) are bit-for-bit reproducible run-to-run —
+confirmed by comparing an earlier interactive run against this session's
+`collect_results.py` run. jitcode/jitcdde are not: on the chaotic systems
+(Lorenz, Rössler, Mackey-Glass) their numbers shift by ~`0.01`-`0.02` for
+`λ1` between runs, consistent with an unseeded random initial tangent
+basis combined with genuine sensitivity to initial conditions — on the
+non-chaotic systems (linear ODE, linear network) this washes out to `~1e-5`
+since the top-`k` tangent subspace there is unique regardless of starting
+direction. This is itself a useful data point: it's the same
+finite-`N`/finite-precision character of noise the Discussion section
+below attributes to all three tools' chaotic-system estimates, just made
+visible by re-running rather than inferred from a single run.
 
 ### ODE systems (lyapax vs. jitcode vs. ChaosTools.jl)
 
 | System | lyapax | jitcode | ChaosTools.jl | Published | Notes |
 |---|---|---|---|---|---|
-| Linear ODE (Tier 0.1) | TODO | TODO | TODO | exact | |
-| Lorenz `λ1` (Tier 1.1/2) | TODO | TODO | TODO | `0.9056` | |
-| Lorenz `sum(λ)` | TODO | TODO | TODO | `-13.667` | |
-| Rössler `λ1` (Tier 1.2/2) | TODO | TODO | TODO | `~0.07` | |
-| 4-node linear network (Tier 3.1) | TODO | TODO | TODO | exact eigenvalues | |
+| Linear ODE (Tier 0.1) | `[-1.0000009, -1.9999991, -4.9999999997]` | `[-1.0000072, -1.9999928, -4.9999999995]` | `[-1.0000000000, -2.0000000000, -4.9999999999]` | exact `[-1, -2, -5]` | all three within `1e-5` of exact; ChaosTools.jl (fixed `dtmax`, see Fairness notes) is machine-precision exact |
+| Lorenz `λ1` (Tier 1.1/2) | `0.90671` | `0.89404` | `0.89674` | `0.9056` | max-abs-diff from published: lyapax `0.0011`, jitcode `0.0116`, ChaosTools.jl `0.0089` — all well inside the finite-time convergence noise this quantity is known to have (jitcode re-runs also land elsewhere in this band — see reproducibility note above) |
+| Lorenz `sum(λ)` | `-13.6666` | `-13.6667` | `-13.5228` | `-13.6667` (exact, `-(σ+1+β)`) | lyapax/jitcode diff `<0.0002`; ChaosTools.jl diff `0.144` (~1%) — same structural identity, larger finite-time noise on this run, not a discrepancy in the invariant itself |
+| Rössler `λ1` (Tier 1.2/2) | `0.07565` | `0.07105` | `0.06205` | `~0.07` | all three within the qualitative `(0.02, 0.12)` band `tests/test_lyapunov_core.py` checks; jitcode closest to `0.07` this run |
+| 4-node linear network (Tier 3.1) | `[-0.9995, -2.0000, -2.0000, -3.0015]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | exact `[-1, -2, -2, -3]` | all three within `1.5e-3` of exact; ChaosTools.jl and jitcode agree to `~1e-5` of each other |
 
 ### Map systems (lyapax vs. ChaosTools.jl only)
 
 | System | lyapax | ChaosTools.jl | Exact | Notes |
 |---|---|---|---|---|
-| Logistic map `r=4` (Tier 0.2) | TODO | TODO | `ln 2 = 0.693147` | |
-| Hénon map, `sum(λ)` (Tier 0.3) | TODO | TODO | `ln 0.3 = -1.203973` | |
+| Logistic map `r=4` (Tier 0.2) | `0.6931520` | `0.6931520` | `ln 2 = 0.6931472` | both tools land on the *same* `5e-6` finite-`N` bias from the same `x0=0.4`, `N=500,000` orbit — expected, since a 1D map's Lyapunov exponent is a deterministic ergodic average with no random-seed dependence in either tool |
+| Tent map (Tier 0.2) | `0.6931472` | `0.6931472` | `ln 2 = 0.6931472` | both essentially exact (slope is exactly `±2` everywhere, no finite-`N` bias possible) |
+| Hénon map, `sum(λ)` (Tier 0.3) | `-1.203973` | `-1.203973` | `ln 0.3 = -1.203973` | both exact to `~1e-6`; individual exponents lyapax `[0.4209, -1.6248]`, ChaosTools.jl `[0.4191, -1.6231]`, both close to the commonly-cited `[0.419, -1.623]` |
 
 ### DDE systems (lyapax vs. jitcdde)
 
 | System | lyapax | jitcdde | Reference | Notes |
 |---|---|---|---|---|
-| Linear scalar DDE (Tier 4.2) | TODO | TODO | Lambert W root | |
-| Mackey-Glass `λ1` (Tier 4.1) | TODO | TODO | order `1e-2`-`1e-3` | qualitative only, see Tier 4.1 caveats |
-| Mackey-Glass KY dimension | TODO | TODO | `2`-`3` | |
-| 2-node delayed linear network (Tier 4.3) | TODO | TODO (network DDE — check jitcdde supports multi-variable) | Lambert W root (2x2) | jitcdde may need a hand-rolled 2-variable system since it's not natively network-shaped |
+| Linear scalar DDE (Tier 4.2) | `-0.59613` | `-0.59830` | `-0.598304` (Lambert W root) | jitcdde matches to `7e-7` (essentially exact); lyapax within `0.0022`, inside its own test's `atol=0.01` |
+| Mackey-Glass `λ1` (Tier 4.1) | `0.00193` | `0.00548` | order `1e-2`-`1e-3` | both inside the qualitative range; differ by `~2.8x`, expected — see Tier 4.1's own "qualitative only" caveat, this is a chaotic system with no digit-level reference (and jitcdde's own re-run variance, see reproducibility note above) |
+| Mackey-Glass KY dimension | `2.053` | `2.141` | `2`-`3` | both inside the literature range and close to each other (`0.09` apart) |
+| 2-node delayed linear network (Tier 4.3) | not yet run against jitcdde | — | Lambert W root (2x2) | deferred — jitcdde needs a hand-rolled 2-variable delayed system (no native network support); see Open TODOs |
 
 ## Results — Performance
 
-*Not yet populated with cross-tool numbers.* lyapax-internal numbers
-already measured this session (see `notes/milestones.md`, M6) are recorded
-here for reference, clearly labeled as internal-only:
+lyapax-internal numbers already measured this session (see
+`notes/milestones.md`, M6) are recorded here for reference, clearly labeled
+as internal-only:
 
 | Comparison | Result | Source |
 |---|---|---|
 | lyapax matrix-free (jvp/vmap) vs. dense jacfwd, 200-node Kuramoto network, `k=5` | **~23x** faster (`5.41s` → `0.24s`, 200 raw steps) | `notes/milestones.md` M6, internal only |
 | lyapax `jax.vmap` parameter sweep vs. Python loop, 13-point Kuramoto `G` sweep | **~2.9x** faster (`4.05s` → `1.38s`) | `notes/milestones.md` M6, internal only |
 
-Cross-tool wall-time table (TODO — same systems as the accuracy tables
-above, first-call and steady-state columns per tool):
+Cross-tool wall-time table, same systems as the accuracy tables above.
+"1st call" includes each tool's JIT/compile step (XLA tracing for lyapax, C
+compilation for jitcode/jitcdde, Julia JIT for ChaosTools.jl); "warm" is a
+second call reusing the already-compiled system (see Methodology).
+**Read this as "does it stay usable interactively," not a ranking** — the
+three tools spend their compile budget completely differently (see
+Discussion), and none of them were tuned for speed here, only for matching
+settings:
 
 | System | lyapax (warm) | jitcode/jitcdde (warm) | ChaosTools.jl (warm) | lyapax (1st call) | jitcode/jitcdde (1st call) | ChaosTools.jl (1st call) |
 |---|---|---|---|---|---|---|
-| Lorenz | TODO | TODO | TODO | TODO | TODO | TODO |
-| Mackey-Glass | TODO | TODO | — | TODO | TODO | — |
-| 200-node network (lyapax only — no natural equivalent in the other tools without hand-building the coupled ODE system) | TODO | — | — | TODO | — | — |
+| Linear ODE (Tier 0.1) | `0.95s` | `0.19s` | `0.003s` | `2.84s` | `1.03s` | `5.43s` |
+| Lorenz | `1.75s` | `0.66s` | `0.011s` | `3.46s` | `1.54s` | `5.35s` |
+| Rössler | `4.65s` | `2.21s` | `0.030s` | `6.43s` | `3.06s` | `5.29s` |
+| 4-node network (Tier 3.1) | `0.73s` | `0.20s` | `0.004s` | `2.48s` | `1.17s` | `5.17s` |
+| Linear scalar DDE (Tier 4.2) | `0.67s` | `0.018s` | — | `2.35s` | `1.08s` | — |
+| Mackey-Glass | `1.40s` | `11.28s` | — | `3.54s` | `17.60s` | — |
+| 200-node network (lyapax only — no natural equivalent in the other tools without hand-building the coupled ODE system) | `0.24s` (200 steps, `k=5`, see M6 above) | — | — | — | — | — |
+
+Notes on this table:
+- **jitcode/jitcdde "1st call" numbers reflect this session's disk cache,
+  not a guaranteed cold-compile time**: these scripts had already been run
+  once manually earlier in this session before `collect_results.py`'s
+  batched run produced the numbers above, and jitcode/setuptools cache
+  compiled `.so` artifacts on disk by content hash — a genuinely
+  first-ever compile of a new system is closer to `~3-5s` (observed on the
+  earlier, truly-cold manual run of the same linear-ODE script) than the
+  `~1s` shown here. Not correctable without clearing that cache and
+  re-timing in isolation, so reported as observed with this caveat rather
+  than re-run under artificial cold conditions.
+- **ChaosTools.jl's warm calls are the fastest by a wide margin** (`4ms`-`30ms`)
+  once compiled — Julia's JIT compiles the specific `N`/`Δt`/`Ttr` call
+  signature once, and repeat calls with the same signature hit compiled
+  native code with none of jitcode's per-call Python-object overhead or
+  lyapax's per-call dispatch through the JAX runtime.
+- **ChaosTools.jl's 1st-call cost is the highest** (`~5.1s`-`5.4s`, dominated
+  by Julia's own package/method JIT compilation, not the problem size —
+  note it's nearly *identical* across the small linear ODE and the
+  200,000-step Rössler run, confirming it's fixed compile overhead, not
+  problem-size-dependent).
+- **jitcdde's Mackey-Glass is the outlier**, `11.28s` warm — an order of
+  magnitude slower than every other warm number in this table. Likely
+  cause: `n_lyap=8` for a scalar DDE makes the augmented tangent system
+  `1×(8+1)=9`-dimensional with a `tau_steps=17` history buffer that
+  jitcdde tracks via Hermite-interpolated history splines (not a fixed
+  ring buffer, see `notes/milestones.md` M4's discussion of this exact
+  design tradeoff) — interpolation bookkeeping cost that lyapax's
+  fixed-size ring buffer doesn't pay. Not confirmed by profiling, flagged
+  as the likely explanation given the architecture, not a measured cause.
+- **lyapax's warm times are consistently the middle of the pack** on these
+  small/medium problem sizes — its actual selling point (M6) is that its
+  *relative* cost barely grows with problem size (`k`-scaling via
+  matrix-free `jvp`, `vmap` batching over parameter grids), which the
+  200-node row and the M6 internal numbers above demonstrate and which
+  none of these single-small-system rows can show on their own.
+
+## Discussion
+
+**Accuracy: lyapax agrees with two independent, mature tools across every
+system tested**, to within the same finite-time/finite-precision noise
+those tools show against each other and against the literature. No case
+here shows lyapax converging to a *different* answer than the exact or
+published reference — every discrepancy above is consistent with ordinary
+finite-`N` statistical noise (maps, chaotic flows) or the documented
+qualitative-only status of Mackey-Glass (Tier 4.1). The one interesting
+asymmetry is Lorenz's `sum(λ)`: lyapax and jitcode land within `0.0002` of
+the exact `-13.667`, while ChaosTools.jl is `0.144` off — all three are
+computing the same structural invariant over a finite chaotic trajectory,
+so this reads as run-to-run convergence noise on that invariant specifically
+(it would likely shrink with a longer run in ChaosTools.jl too), not a
+systematic bias.
+
+**The most consequential finding of this report isn't a lyapax number at
+all — it's the ChaosTools.jl `dtmax` footgun** documented in Fairness
+notes above. Without it, two of the six ODE systems here (a linear ODE and
+a linear network — the two *simplest*, most clearly-specified test cases,
+picked specifically because they have exact closed-form answers) silently
+returned wrong Lyapunov spectra, by a large margin, using ChaosTools.jl's
+own documented default settings. This is exactly the kind of bug that a
+report validating *against* published tools is supposed to catch, and
+underscores the report's original point 3 (Purpose, above): agreement with
+an established tool is only meaningful once you've confirmed both sides
+are actually computing what they claim to.
+
+**Performance is not really comparable to a single number**, and this
+report doesn't try to produce one. The three tools pay for correctness in
+different currencies: ChaosTools.jl pays a large, roughly fixed per-session
+Julia-JIT tax (`~5s`) and is then the fastest tool in this report by a wide
+margin on every subsequent call; jitcode/jitcdde pay a C-compilation tax
+per unique system (`~1-16s`, worst for Mackey-Glass's Hermite-interpolated
+history) and are then fast and stable; lyapax pays XLA tracing per unique
+`(step_fn, n_steps, k, ...)` signature and sits in the middle for these
+small/medium single-run systems. None of the systems in this report are
+large enough to exercise lyapax's actual differentiator — the M6
+matrix-free `jvp`/`vmap` design that keeps its *relative* cost from growing
+with network size or parameter-grid size (`notes/milestones.md`, M6;
+`examples/plot_10_matrix_free_scaling.py`, `plot_11_vmap_parameter_sweep.py`)
+— a capability none of jitcode/jitcdde/ChaosTools.jl expose through a
+comparably simple API (batching a whole parameter sweep through one
+`vmap` call, or computing a partial spectrum on a 300+-dimensional coupled
+system without ever materializing a dense Jacobian). The 200-node row in
+the performance table is the closest this report gets to demonstrating
+that regime, and even that undersells it (see M6's `d>300`,
+`k=5` benchmark for the sharper number).
+
+**What this report doesn't cover, and why that's an acceptable gap for
+v1**: Kuramoto/sigmoidal coupling, delayed Kuramoto networks, and per-edge
+heterogeneous delay matrices have no natural equivalent in jitcode/jitcdde
+(no coupling abstraction to compare against) or a much larger plumbing
+cost in ChaosTools.jl for no extra correctness evidence beyond what
+lyapax's own test suite (`tests/test_network.py`,
+`tests/test_delayed_networks.py`) already provides via exact/structural
+references. Tier 4.3 against jitcdde is deferred for a similar
+low-value-for-effort reason (Open TODOs, below) — lyapax already has an
+independent closed-form check for that system.
 
 ## Open TODOs (resume here)
 
-1. ~~Confirm Julia install finished cleanly.~~ Done —
-   `Pkg.add(["ChaosTools", "DynamicalSystemsBase", "OrdinaryDiffEq", "StaticArrays"])`
-   completed and precompiled, `using ChaosTools` succeeds. ~~Record exact
-   package versions.~~ Done — see Environment table above.
-2. Create a `benchmarks/` directory (sibling to `examples/`, `tests/`) with
-   one script per tool per system group, e.g.:
-   - `benchmarks/jitcode/lorenz.py`, `benchmarks/jitcode/linear_ode.py`, `benchmarks/jitcode/network.py`
-   - `benchmarks/jitcdde/mackey_glass.py`, `benchmarks/jitcdde/linear_scalar.py`
-   - `benchmarks/chaostools/lorenz.jl`, `benchmarks/chaostools/maps.jl`, `benchmarks/chaostools/network.jl`
-   - `benchmarks/lyapax/` (thin wrappers around the existing `examples/` scripts, or reuse them directly)
-   - a small `benchmarks/collect_results.py` that runs everything and
-     writes a results table (json/csv) this report's tables get filled in
-     from, so re-running the whole report later is one command rather than
-     manual copy-paste.
-3. Run each accuracy table row, fill in the numbers + max-abs-diff.
-4. Run each performance table row (warm + first-call, matching
-   `plot_07_speed_and_accuracy.py`'s methodology).
-5. Write a short "Discussion" section once the tables are populated:
-   where lyapax agrees/disagrees, and by how much; where lyapax is
-   faster/slower and why (JAX tracing/JIT vs. C compilation vs. Julia's
-   own JIT); explicitly call out the network/coupling scale demos
-   (`plot_10_matrix_free_scaling.py`, `plot_11_vmap_parameter_sweep.py`)
-   as capability the other tools don't have an equivalent one-line API
-   for, rather than a number to compare.
-6. Once populated, this report is the source for whatever gets published
-   (README badge/section, paper, docs page) — keep the raw numbers here
-   and write a condensed summary elsewhere rather than duplicating tables.
+1. ~~Confirm Julia install finished cleanly~~ / ~~record package versions~~ —
+   done, see Environment table.
+2. ~~Create `benchmarks/` with one script per tool per system group, plus
+   `benchmarks/collect_results.py`.~~ Done —
+   `benchmarks/{lyapax,jitcode,jitcdde,chaostools}/*.{py,jl}` +
+   `benchmarks/collect_results.py` (writes `benchmarks/results.json`).
+   `jitcode`/`jitcdde`/`sympy` are an opt-in `pip install -e .[benchmark]`
+   extra (not a core or `dev` dependency — see `pyproject.toml`); ChaosTools.jl
+   is a separate Julia install, not managed by this repo.
+3. ~~Run each accuracy table row.~~ Done — see Results — Accuracy above.
+4. ~~Run each performance table row.~~ Done — see Results — Performance above.
+5. ~~Write a Discussion section.~~ Done — see below.
+6. **Remaining:** Tier 4.3 (2-node delayed linear network) against
+   jitcdde — needs a hand-rolled 2-variable delayed system since jitcdde
+   has no native network/coupling abstraction (mirrors how
+   `benchmarks/jitcode/network.py` hand-expands the 4-node case). Low
+   priority: lyapax's own `tests/test_delayed_networks.py` already
+   validates this system against the exact Lambert-W closed form; this
+   would only add a second independent tool's agreement, not new
+   correctness evidence.
+7. Once this is referenced from a README badge/section, paper, or docs
+   page, keep the raw numbers here as the source of truth and write a
+   condensed summary at the point of use rather than duplicating tables.
