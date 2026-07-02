@@ -1,3 +1,74 @@
+# Project-specific imported/generated content
 lyapunov-master/
+
+# Python bytecode and caches
 __pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Build and packaging artifacts
+build/
+dist/
+downloads/
+eggs/
+.eggs/
 *.egg-info/
+*.egg
+pip-wheel-metadata/
+wheelhouse/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+vbienv/
+
+# Installer and dependency caches
+pip-log.txt
+pip-delete-this-directory.txt
+.pip-cache/
+
+# Jupyter and notebook checkpoints
+.ipynb_checkpoints/
+
+# Type checker and tool output
+dmypy.json
+dmypy.json.lock
+
+# Logs and local runtime output
+*.log
+logs/
+tmp/
+temp/
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor and IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Local assistant/editor metadata
+.clinerules
+.github/copilot-instructions.md
