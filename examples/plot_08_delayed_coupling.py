@@ -4,11 +4,10 @@ Delayed coupling: two-node linear DDE network vs delay
 
 The simplest possible "delayed coupling" demo: two identical linear nodes
 coupled through each other's *delayed* state,
-``x1' = gamma*x1 + G*x2(t-tau)``, ``x2' = gamma*x2 + G*x1(t-tau)`` -- the
-same Tier 4.3 system validated once (at a single ``tau``) in
-``tests/test_delayed_networks.py::test_two_node_symmetric_delayed_network_matches_lambert_w``.
-This demo sweeps ``tau`` instead of checking one value, to show what the
-delay itself does to the spectrum.
+``x1' = gamma*x1 + G*x2(t-tau)``, ``x2' = gamma*x2 + G*x1(t-tau)``. This
+sweeps the delay ``tau`` itself, to show what delayed coupling does to the
+spectrum -- how it differs from the zero-delay case in
+``plot_04_linear_network.py``.
 
 **Why this system.** Its characteristic equation is tractable: the
 symmetric mode (``x1=x2``) gives ``lambda_sym = gamma +
@@ -27,15 +26,18 @@ crossing, an artifact of the branch point, not real dynamics). The sweep
 below stays at ``tau <= 0.4``, safely inside the region where the closed
 form is valid, so every plotted "exact" point is trustworthy.
 
-**The machinery.** Genuinely delayed coupling (as opposed to M4's "coupled
-to your own past" scalar DDEs) needs the general, per-edge ``delay_steps``
-path: ``simulator.Connectivity(weights, tract_lengths, speed)`` turns a
-physical ``tau`` into an integer ``delay_steps`` matrix and ring-buffer
-``horizon``, exactly as ``lyapax.dde.resolve_tau_steps`` does for the
-scalar case -- then ``simulator.make_step_fn(..., delay_steps=...)`` and
-``lyapax.dde.lyapunov_spectrum_dde`` do the rest (see M5 in
-notes/milestones.md: no new engine code was needed for per-edge delays,
-only validation).
+**The machinery.** Coupling between two *different* nodes' delayed states
+(as opposed to a single scalar equation delayed against its own past, e.g.
+Mackey-Glass) needs the general, per-edge ``delay_steps`` path:
+``simulator.Connectivity(weights, tract_lengths, speed)`` turns a physical
+``tau`` into an integer ``delay_steps`` matrix and the ring-buffer
+``horizon`` needed to store enough history, exactly as
+``lyapax.dde.resolve_tau_steps`` does for a single scalar delay -- then
+``simulator.make_step_fn(..., delay_steps=...)`` and
+``lyapax.dde.lyapunov_spectrum_dde`` do the rest: propagate the state and
+its ring-buffer history together, periodically re-orthonormalizing the
+tangent directions via QR, the same Benettin's-method idea as the
+non-delayed engine, just carrying delay history alongside the state.
 """
 # %%
 import os

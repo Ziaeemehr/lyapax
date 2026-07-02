@@ -16,12 +16,13 @@ threshold both leading exponents are small and positive (weakly
 unstable/incoherent regime); once the network locks, ``lambda_1`` snaps to
 machine-precision 0 (the marginal rotation mode) and ``lambda_2`` turns
 negative, growing more negative as coupling strengthens the lock. This is
-exactly what the run below shows -- not a hypothesis, it's what M3's
-engine actually produces for this network.
+exactly what the run below shows -- not a hypothesis, it's what lyapax
+actually produces for this network.
 
 Note: this sweep calls ``lyapunov_spectrum`` once per ``G`` value in a
-Python loop -- there is no ``vmap``-based batched sweep yet (that is M6);
-see ``examples/plot_07_speed_and_accuracy.py`` for what that costs.
+plain Python loop; see ``examples/plot_11_vmap_parameter_sweep.py`` for the
+same sweep done as a single batched ``jax.vmap`` call instead, and
+``examples/plot_07_speed_and_accuracy.py`` for what the per-call cost is.
 
 **The system.** 6 oscillators, all-to-all coupled (``weights`` is the
 complete graph: 1 everywhere off the diagonal, 0 on it), with

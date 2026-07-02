@@ -1,31 +1,31 @@
 """
-Matrix-free tangent propagation: dense jacfwd vs jvp/vmap (M6)
-====================================================================
+Matrix-free tangent propagation: dense jacfwd vs jvp/vmap
+================================================================
 
-M6 replaced ``lyapax.core.lyapunov_spectrum``'s per-raw-step tangent
-propagation: M1-M5 used dense ``jax.jacfwd(step_fn)(state)`` (computes all
-``d`` Jacobian columns, then ``jac @ Y`` to get the ``k`` tracked ones,
-wasting ``d - k`` columns whenever ``k < d``); M6 switched to one
-``jax.jvp`` per tracked column, batched with ``jax.vmap`` -- cost is now
-O(k) forward-mode passes per raw step, not O(d). This is the same
-mechanism ``lyapax.dde.lyapunov_spectrum_dde`` already used from M4 (there,
-for a much larger augmented ``(state, buf)`` ring-buffer dimension); M6
-carries it back to the plain (no ring buffer) ODE/network path. See the M6
-entry in ``notes/milestones.md`` for the design writeup and the
-mechanism-correctness test (``test_tangent_propagation_matches_dense_jacfwd``
-in ``tests/test_lyapunov_core.py``) -- this script is about *cost*, not
-correctness; that's already covered by the test suite.
+Tracking only the top ``k`` Lyapunov exponents of a ``d``-dimensional
+system (``k < d``) should only cost ``O(k)`` work per step, not ``O(d)`` --
+that's the whole point of a *partial* spectrum. The naive way to linearize
+a step function, ``jax.jacfwd(step_fn)(state)``, doesn't get this for
+free: it always computes the full ``d x d`` Jacobian and only afterwards
+multiplies by the ``k`` tracked tangent columns (``jac @ Y``), so the
+``d - k`` untracked columns are wasted work. ``lyapax.core.lyapunov_spectrum``
+instead computes exactly the ``k`` columns that are actually needed, via one
+``jax.jvp`` (forward-mode directional derivative) per tracked column,
+batched together with ``jax.vmap`` -- the same "matrix-free" idea
+underlying ``lyapax.dde.lyapunov_spectrum_dde``'s delayed-network engine,
+here applied to the plain (non-delayed) case. See
+``tests/test_lyapunov_core.py::test_tangent_propagation_matches_dense_jacfwd``
+for the correctness check (this script is purely about *cost*).
 
 **The comparison.** A Kuramoto network (same construction as
 ``plot_05``/``plot_09``) at growing size ``d`` (= ``n_nodes``, one phase
 per node), tracking a fixed small ``k=5``. Both a hand-rolled dense-jacfwd
 step and the library's actual jvp/vmap step (the same code
-``lyapax.core.lyapunov_spectrum._advance`` runs internally) are JIT-compiled
-and timed after a warmup call, so this measures steady-state per-step cost,
-not one-time tracing/compilation overhead. Dense cost should grow much
-faster than jvp/vmap cost as ``d`` grows, since ``k`` (what jvp/vmap
-actually pays for) stays fixed while dense keeps paying for all ``d``
-columns regardless.
+``lyapax.core.lyapunov_spectrum`` runs internally) are JIT-compiled and
+timed after a warmup call, so this measures steady-state per-step cost, not
+one-time tracing/compilation overhead. Dense cost should grow much faster
+than jvp/vmap cost as ``d`` grows, since ``k`` (what jvp/vmap actually pays
+for) stays fixed while dense keeps paying for all ``d`` columns regardless.
 """
 # %%
 import os

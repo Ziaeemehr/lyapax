@@ -3,9 +3,12 @@ Custom coupling functions: no registry needed
 =================================================
 
 lyapax coupling is a plain callable
-``coupling_fn(cvar_state, weights, params) -> coupling`` -- not a closed
-enum dispatched through hardcoded if/elif branches (contrast with vbi's
-``CouplingSpec.kind``, see the M3 note in ``notes/milestones.md``). This
+``coupling_fn(cvar_state, weights, params) -> coupling`` -- not a fixed set
+of named coupling "kinds" dispatched through hardcoded if/elif branches
+internally. That means adding a new coupling rule never requires touching
+the library's source: any function with the right signature is a
+first-class coupling, exactly like the built-in ``linear_coupling``/
+``sigmoidal_coupling``/``kuramoto_coupling`` in ``lyapax.coupling``. This
 demo writes one from scratch -- no import from ``lyapax.coupling`` at all
 -- and plugs it directly into ``make_network_step_fn``, reproducing the
 exact linear-network result from ``plot_04_linear_network.py``.

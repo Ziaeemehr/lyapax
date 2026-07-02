@@ -7,11 +7,11 @@ a *delayed* Kuramoto network -- the same 6-oscillator, heterogeneous-
 frequency, all-to-all system, but now each oscillator feels its neighbors'
 phases as they were ``tau`` time units ago rather than instantaneously,
 via ``dtheta_i/dt = omega_i + (G/N) sum_j sin(theta_j(t-tau) - theta_i(t))``.
-Runs the same ``G`` sweep two ways -- zero delay (M3's engine, exactly
-``plot_05``) and ``tau=0.3`` (M4/M5's DDE engine) -- and overlays
-``lambda_2`` from both, since ``lambda_2`` is what tracks synchronization
-(see ``plot_05``'s docstring for why: ``lambda_1`` is pinned to 0 by the
-model's exact rotational symmetry and never signals anything).
+Runs the same ``G`` sweep two ways -- zero delay (exactly ``plot_05``) and
+``tau=0.3`` (the delayed/DDE engine) -- and overlays ``lambda_2`` from
+both, since ``lambda_2`` is what tracks synchronization (see ``plot_05``'s
+docstring for why: ``lambda_1`` is pinned to 0 by the model's exact
+rotational symmetry and never signals anything).
 
 **What to expect, and why.** At ``G=0`` both delayed and undelayed
 networks are decoupled oscillators (``dtheta/dt=omega``, state-independent
@@ -29,21 +29,23 @@ parameters, not a foregone conclusion -- read the printed/plotted
 **The machinery.** Both runs share the same ``ModelSpec``/dfun
 (``"omega + c"``) and ``kuramoto_coupling`` callable as ``plot_05``,
 because ``lyapax.coupling`` builders are plain callables with no delay
-opinion baked in (see the M7 note in notes/milestones.md: this worked
-"for free" once M4 gave the ring buffer a ``coupling_fn`` slot). The delay
-=0 run goes through ``lyapax.network.make_network_step_fn`` +
-``lyapax.core.lyapunov_spectrum`` exactly as in ``plot_05``; the delayed
-run goes through ``lyapax.simulator.make_step_fn(..., coupling_fn=...,
-tau_steps=...)`` (the *uniform*-delay branch -- a single global ``tau``
-shared by every edge, not the per-edge ``delay_steps`` matrix from
-``plot_08_delayed_coupling.py``) + ``lyapax.dde.lyapunov_spectrum_dde``.
+opinion baked in -- the same coupling function works whether the state it
+receives is instantaneous or delayed. The delay-0 run goes through
+``lyapax.network.make_network_step_fn`` + ``lyapax.core.lyapunov_spectrum``
+exactly as in ``plot_05``; the delayed run goes through
+``lyapax.simulator.make_step_fn(..., coupling_fn=..., tau_steps=...)`` (the
+*uniform*-delay branch -- a single global ``tau`` shared by every edge, not
+the per-edge ``delay_steps`` matrix from ``plot_08_delayed_coupling.py``)
++ ``lyapax.dde.lyapunov_spectrum_dde``.
 
 Note: like ``plot_05``, this sweeps ``G`` with a Python loop, one
-``lyapunov_spectrum[_dde]`` call per point -- no batched ``vmap`` sweep yet
-(M6). The delayed engine's tangent propagation is O(k) jvp/vmap per raw
-step (not O(d_total) dense jacfwd -- see ``lyapax/dde.py``'s module
-docstring), which is why this is tractable at all despite the ring buffer
-adding ``horizon * n_nodes`` extra tangent-carried dimensions per node.
+``lyapunov_spectrum[_dde]`` call per point (see
+``plot_11_vmap_parameter_sweep.py`` for the batched-``vmap`` alternative on
+the zero-delay engine). The delayed engine's tangent propagation costs
+O(k) forward passes per raw step (via ``jax.jvp``/``jax.vmap``, not a dense
+Jacobian -- see ``lyapax/dde.py``'s module docstring), which is why this is
+tractable at all despite the ring buffer adding ``horizon * n_nodes`` extra
+tangent-carried dimensions per node.
 """
 # %%
 import os

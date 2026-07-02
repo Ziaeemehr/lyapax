@@ -71,11 +71,11 @@ print(
     "executable for an identical jaxpr, not anything lyapax does "
     "explicitly. It's not a guarantee, though: a *different* shape "
     "(n_steps, k, renorm_every, or state dimension) still pays the full "
-    "trace+compile cost. Wrapping the hot path in an explicit jax.jit "
-    "(static_argnums for n_steps/k/renorm_every) would make the caching "
-    "behavior deliberate rather than incidental -- worth doing in M6 if "
-    "repeated-shape calls turn out to be common (e.g. parameter sweeps "
-    "like plot_05_kuramoto_sync.py)."
+    "trace+compile cost. For a parameter sweep at the same shapes -- e.g. "
+    "scanning a coupling strength G, as in plot_05_kuramoto_sync.py -- "
+    "see plot_11_vmap_parameter_sweep.py: batching the whole sweep into "
+    "one jax.vmap call sidesteps the repeated-call overhead entirely, "
+    "rather than just relying on this incidental compilation-cache reuse."
 )
 
 # %%

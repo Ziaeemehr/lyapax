@@ -1,26 +1,27 @@
 """
-vmap parameter sweeps: the same Kuramoto transition, one XLA call (M6)
-============================================================================
+vmap parameter sweeps: the same Kuramoto transition, one XLA call
+=======================================================================
 
 ``plot_05_kuramoto_sync.py`` swept the coupling strength ``G`` with a plain
 Python ``for`` loop, one full ``lyapunov_spectrum`` call per ``G`` value.
-M6 adds ``lyapax.sweep.sweep_lyapunov_spectrum``, which does the same sweep
-as a single ``jax.vmap``-batched call instead -- one XLA program that
-computes every grid point together, rather than ``len(G_values)`` separate
-Python-level dispatches (each of which re-enters the JAX/XLA call machinery
-even when, as ``plot_07_speed_and_accuracy.py`` found, the compiled
-executable itself is cached across same-shape calls).
+``lyapax.sweep.sweep_lyapunov_spectrum`` does the same sweep as a single
+``jax.vmap``-batched call instead -- one XLA program that computes every
+grid point together, rather than ``len(G_values)`` separate Python-level
+dispatches (each of which re-enters the JAX/XLA call machinery even when,
+as ``plot_07_speed_and_accuracy.py`` found, the compiled executable itself
+is cached across same-shape calls).
 
-**Why this was possible with no new tangent/QR math.**
-``lyapax.simulator.make_step_fn``'s carry already threads ``params`` through
-as data, not a closed-over Python constant (see that function's docstring
--- anticipated from M0/M4 specifically for this). The one place that still
-closed over ``params`` was the thin ``lyapax.network.make_network_step_fn``
-adapter -- its new sibling, ``make_parametrized_network_step_fn``, takes
-``params`` as a call-time argument instead, and
-``sweep_lyapunov_spectrum`` is then just ``jax.vmap`` applied to a function
-that calls the *existing*, unmodified ``lyapunov_spectrum`` once. See the
-M6 entry in notes/milestones.md.
+**Why sweeping needs a different step function.** ``jax.vmap`` can only
+batch over things passed to it as *data*, not over values baked into a
+closure at construction time -- and ``make_network_step_fn`` closes
+``params`` (e.g. the coupling strength ``G``) over when it's built, exactly
+like the non-swept examples use it. ``make_parametrized_network_step_fn``
+is the same network wiring with ``params`` taken as a call-time argument
+instead (``step(state, params) -> new_state``), so a batch of ``params``
+values can be threaded through a single ``jax.vmap`` call around the
+*existing*, unmodified ``lyapunov_spectrum`` -- no new tangent-propagation
+or QR code needed, since batching a computation is orthogonal to what the
+computation itself does.
 
 **Correctness, not just speed.** The plot below reproduces
 ``plot_05``'s figure using the vmap sweep instead of the Python loop; the
