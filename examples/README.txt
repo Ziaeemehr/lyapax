@@ -9,5 +9,8 @@ notes/milestones.md, but this directory is ready to point a
 
 Demos cover: benchmark systems with a known answer (Tiers 0-2 in
 notes/validation_systems.md), coupled networks (Tier 3), the extensibility
-of custom coupling functions, and a speed/accuracy characterization of the
-current implementation.
+of custom coupling functions, a speed/accuracy characterization of the
+current implementation, and delayed (DDE) networks -- both a per-edge
+linear delay sweep against a closed-form (Lambert W) reference and a
+delayed Kuramoto network showing what transmission delay does to
+synchronization (Tier 4-5).
