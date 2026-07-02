@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lyapax"
+version = "0.0.1"
+description = "JAX-native Lyapunov exponent computation for ODEs and DDEs."
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Abolfazl Ziaeemehr", email = "a.ziaeemehr@gmail.com" },
+]
+readme = "README.md"
+
+# Verified against jax==0.10.0 in the local dev environment (vbienv).
+# GPU execution is currently untested here: the machine's cudnn/driver
+# combination fails (see notes/milestones.md) so CI/dev defaults to CPU.
+dependencies = [
+    "jax>=0.10",
+    "numpy>=1.23",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+]
+examples = [
+    "matplotlib>=3.7",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

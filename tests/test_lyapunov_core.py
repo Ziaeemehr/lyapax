@@ -1,0 +1,174 @@
+"""M1 validation tests: Tiers 0-2 from notes/validation_systems.md.
+
+None of these compare against anything in lyapunov-master/ -- references
+are exact analytic values, structural invariants (constant/derivable
+divergence), or published literature figures, per that doc's guidance.
+"""
+import jax.numpy as jnp
+import numpy as np
+
+from lyapax.core import lyapunov_spectrum
+from lyapax.integrators import rk4_step
+from lyapax import systems
+
+
+# ---------------------------------------------------------------------------
+# Tier 0.1 -- linear ODE, exact eigenvalues
+# ---------------------------------------------------------------------------
+
+def test_linear_system_distinct_real_eigenvalues():
+    A = jnp.diag(jnp.array([-1.0, -2.0, -5.0]))
+    rhs = systems.linear_system(A)
+    dt = 1e-3
+    step = rk4_step(rhs, dt)
+
+    # Even though this system is non-chaotic (all eigenvalues negative, no
+    # attractor to relax onto), a transient is still needed here: the
+    # *tangent vectors* start at a random orthonormal basis and need time to
+    # align with the eigendirections (Oseledets subspaces) before the
+    # log-growth readings reflect the true eigenvalues -- see the comment on
+    # this in core.py's _advance/transient handling.
+    result = lyapunov_spectrum(
+        step, state0=jnp.array([0.3, -0.2, 0.5]),
+        dt=dt, n_steps=20_000, renorm_every=10, t_transient=5.0,
+    )
+
+    np.testing.assert_allclose(np.array(result.exponents), [-1.0, -2.0, -5.0], atol=2e-3)
+
+
+def test_linear_system_complex_conjugate_pair():
+    # eigenvalues -0.1 +/- 1j -> both Lyapunov exponents equal Re = -0.1
+    A = jnp.array([[-0.1, 1.0], [-1.0, -0.1]])
+    rhs = systems.linear_system(A)
+    dt = 1e-3
+    step = rk4_step(rhs, dt)
+
+    result = lyapunov_spectrum(
+        step, state0=jnp.array([1.0, 0.0]),
+        dt=dt, n_steps=50_000, renorm_every=10,
+    )
+
+    np.testing.assert_allclose(np.array(result.exponents), [-0.1, -0.1], atol=5e-3)
+
+
+# ---------------------------------------------------------------------------
+# Tier 0.2 -- 1D chaotic maps, exact LE = ln(2)
+# ---------------------------------------------------------------------------
+
+def test_logistic_map_r4():
+    step = systems.logistic_map(r=4.0)
+
+    result = lyapunov_spectrum(
+        step, state0=jnp.array([0.4]),
+        dt=1.0, n_steps=500_000, renorm_every=1, t_transient=1_000.0,
+    )
+
+    assert abs(float(result.exponents[0]) - np.log(2.0)) < 0.02
+
+
+def test_tent_map():
+    step = systems.tent_map()
+
+    result = lyapunov_spectrum(
+        step, state0=jnp.array([0.4]),
+        dt=1.0, n_steps=500_000, renorm_every=1, t_transient=1_000.0,
+    )
+
+    assert abs(float(result.exponents[0]) - np.log(2.0)) < 0.02
+
+
+# ---------------------------------------------------------------------------
+# Tier 0.3 -- Henon map, exact sum(LE) = ln|b|
+# ---------------------------------------------------------------------------
+
+def test_henon_map_sum_of_exponents():
+    a, b = 1.4, 0.3
+    step = systems.henon_map(a=a, b=b)
+
+    result = lyapunov_spectrum(
+        step, state0=jnp.array([0.1, 0.1]),
+        dt=1.0, n_steps=200_000, renorm_every=1, t_transient=1_000.0,
+    )
+
+    total = float(jnp.sum(result.exponents))
+    assert abs(total - np.log(b)) < 5e-3
+    # loose check against the commonly-cited individual values
+    assert result.exponents[0] > 0.3
+    assert result.exponents[1] < -1.4
+
+
+# ---------------------------------------------------------------------------
+# Tier 1.1 / Tier 2 -- Lorenz: exact sum + published lambda1
+# ---------------------------------------------------------------------------
+
+def test_lorenz_sum_matches_constant_divergence():
+    sigma, rho, beta = 10.0, 28.0, 8.0 / 3.0
+    rhs = systems.lorenz(sigma, rho, beta)
+    dt = 1e-2
+    step = rk4_step(rhs, dt)
+
+    result = lyapunov_spectrum(
+        step, state0=jnp.array([1.0, 1.0, 1.0]),
+        dt=dt, n_steps=50_000, renorm_every=10, t_transient=100.0,
+    )
+
+    expected_sum = -(sigma + 1.0 + beta)
+    assert abs(float(jnp.sum(result.exponents)) - expected_sum) < 0.05
+
+
+def test_lorenz_lambda1_matches_published_value():
+    sigma, rho, beta = 10.0, 28.0, 8.0 / 3.0
+    rhs = systems.lorenz(sigma, rho, beta)
+    dt = 1e-2
+    step = rk4_step(rhs, dt)
+
+    result = lyapunov_spectrum(
+        step, state0=jnp.array([1.0, 1.0, 1.0]),
+        dt=dt, n_steps=50_000, renorm_every=10, t_transient=100.0,
+    )
+
+    assert abs(float(result.exponents[0]) - 0.9056) < 0.08
+    assert abs(float(result.exponents[1])) < 0.03
+
+
+# ---------------------------------------------------------------------------
+# Tier 1.2 / Tier 2 -- Rossler: divergence identity + order-of-magnitude lambda1
+# ---------------------------------------------------------------------------
+
+def test_rossler_lambda1_order_of_magnitude():
+    a, b, c = 0.2, 0.2, 5.7
+    rhs = systems.rossler(a, b, c)
+    dt = 1e-2
+    step = rk4_step(rhs, dt)
+
+    result = lyapunov_spectrum(
+        step, state0=jnp.array([1.0, 1.0, 1.0]),
+        dt=dt, n_steps=200_000, renorm_every=10, t_transient=200.0,
+    )
+
+    assert 0.02 < float(result.exponents[0]) < 0.12
+    assert abs(float(result.exponents[1])) < 0.02
+
+
+# ---------------------------------------------------------------------------
+# M2-preview -- top-k should agree with the leading columns of the full run
+# ---------------------------------------------------------------------------
+
+def test_partial_spectrum_matches_full_spectrum_leading_columns():
+    sigma, rho, beta = 10.0, 28.0, 8.0 / 3.0
+    rhs = systems.lorenz(sigma, rho, beta)
+    dt = 1e-2
+    step = rk4_step(rhs, dt)
+
+    kwargs = dict(
+        state0=jnp.array([1.0, 1.0, 1.0]),
+        dt=dt, n_steps=50_000, renorm_every=10, t_transient=100.0, seed=0,
+    )
+    full = lyapunov_spectrum(step, k=3, **kwargs)
+    partial = lyapunov_spectrum(step, k=1, **kwargs)
+
+    # Both are independent finite-time estimates of the same lambda1 (they
+    # draw differently-shaped initial tangent bases, so are not required to
+    # be numerically identical) -- the tolerance matches the finite-time
+    # convergence noise seen in test_lorenz_lambda1_matches_published_value.
+    assert abs(float(partial.exponents[0]) - float(full.exponents[0])) < 0.01
