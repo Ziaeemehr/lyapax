@@ -6,10 +6,13 @@ the design.
 
 Tier 4.2 (linear scalar DDE) is checked first, against the transcendental
 characteristic equation's dominant root (Lambert W) -- this isolates a DDE
-tangent-propagation bug from Mackey-Glass's nonlinear chaos. Benchmarks are
-expressed as 1-node self-loop ModelSpec/coupling networks (a node "coupled
-to its own delayed history"), mirroring how test_network.py builds its
-ModelSpec helpers locally. None of these compare against anything in
+tangent-propagation bug from Mackey-Glass's nonlinear chaos. The two scalar
+benchmarks (systems.mackey_glass/systems.linear_scalar_dde) go through
+dde.make_scalar_delayed_step_fn -- the lightweight, ModelSpec-free front
+door for non-networked DDEs. test_delayed_network_benchmark_scale exercises
+the other (general, ModelSpec/coupling_fn-based) front door directly, for a
+real delayed network -- both build a step for the same underlying vendored
+ring-buffer simulator. None of these compare against anything in
 lyapunov-master/.
 """
 import time
@@ -19,43 +22,13 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.special import lambertw
 
-from lyapax.dde import lyapunov_spectrum_dde, resolve_tau_steps, constant_history_buf0
-from lyapax.coupling import linear_coupling, kuramoto_coupling
+from lyapax.dde import (
+    lyapunov_spectrum_dde, resolve_tau_steps, constant_history_buf0,
+    make_scalar_delayed_step_fn, scalar_delayed_history0,
+)
+from lyapax.coupling import kuramoto_coupling
 from lyapax.vendored import ModelSpec, StateVar, Parameter, build_jax_dfun, make_step_fn
-
-
-def _linear_scalar_dde_model() -> ModelSpec:
-    """x'(t) = -a*x(t-tau) via a 1-node self-loop: c = -a*x(t-tau)."""
-    return ModelSpec(
-        name="linear_scalar_dde",
-        state_variables=(StateVar("x", default_init=1.0),),
-        parameters=(),
-        cvar=("x",),
-        dfun_str={"x": "c"},
-    )
-
-
-def _mackey_glass_model(beta: float, gamma: float, n: float) -> ModelSpec:
-    return ModelSpec(
-        name="mackey_glass",
-        state_variables=(StateVar("x", default_init=1.2),),
-        parameters=(Parameter("beta", beta), Parameter("gamma", gamma), Parameter("n", n)),
-        cvar=("x",),
-        dfun_str={"x": "beta*c/(1+c**n) - gamma*x"},
-    )
-
-
-def _make_linear_scalar_dde_step(a: float, tau_steps: int, dt: float):
-    model = _linear_scalar_dde_model()
-    dfun = build_jax_dfun(model)
-    weights = jnp.array([[1.0]])
-    step_fn = make_step_fn(
-        dfun=dfun, weights=weights, has_delays=True, horizon=tau_steps + 1,
-        n_nodes=1, cvar_indices=model.cvar_indices, dt=dt,
-        coupling_fn=linear_coupling(a=-a, b=0.0, G_default=1.0),
-        tau_steps=tau_steps, use_heun=True,
-    )
-    return step_fn
+from lyapax import systems
 
 
 # ---------------------------------------------------------------------------
@@ -66,10 +39,9 @@ def test_linear_scalar_dde_matches_lambert_w_root():
     # Small a*tau (< 1/e): non-oscillatory decay, real dominant root.
     a, tau, dt = 0.5, 0.3, 1e-2
     tau_steps = resolve_tau_steps(tau, dt)
-    step_fn = _make_linear_scalar_dde_step(a, tau_steps, dt)
-
-    state0 = jnp.array([[1.0]])
-    buf0 = constant_history_buf0(state0, tau_steps + 1)
+    rhs = systems.linear_scalar_dde(a=a)
+    step_fn = make_scalar_delayed_step_fn(rhs, m=1, tau_steps=tau_steps, dt=dt)
+    state0, buf0 = scalar_delayed_history0(jnp.array([1.0]), tau_steps)
 
     result = lyapunov_spectrum_dde(
         step_fn, state0=state0, buf0=buf0, params={}, dt=dt,
@@ -86,14 +58,14 @@ def test_linear_scalar_dde_dt_convergence():
     catching integer-step delay rounding bugs (risk #4 in
     notes/milestones.md) rather than genuine dt-dependence."""
     a, tau = 0.5, 0.3
+    rhs = systems.linear_scalar_dde(a=a)
     expected = float((lambertw(-a * tau, k=0) / tau).real)
 
     estimates = []
     for dt in (2e-2, 1e-2):
         tau_steps = resolve_tau_steps(tau, dt)
-        step_fn = _make_linear_scalar_dde_step(a, tau_steps, dt)
-        state0 = jnp.array([[1.0]])
-        buf0 = constant_history_buf0(state0, tau_steps + 1)
+        step_fn = make_scalar_delayed_step_fn(rhs, m=1, tau_steps=tau_steps, dt=dt)
+        state0, buf0 = scalar_delayed_history0(jnp.array([1.0]), tau_steps)
         result = lyapunov_spectrum_dde(
             step_fn, state0=state0, buf0=buf0, params={}, dt=dt,
             n_steps=20_000, k=1, renorm_every=5, t_transient=10.0,
@@ -110,9 +82,9 @@ def test_linear_scalar_dde_small_delay_recovers_ode_decay():
     ẋ=-a*x decay rate -a -- a cheap regression check tying the DDE engine
     back to the non-delayed case, independent of the Lambert W reference."""
     a, dt, tau_steps = 1.0, 1e-3, 2
-    step_fn = _make_linear_scalar_dde_step(a, tau_steps, dt)
-    state0 = jnp.array([[1.0]])
-    buf0 = constant_history_buf0(state0, tau_steps + 1)
+    rhs = systems.linear_scalar_dde(a=a)
+    step_fn = make_scalar_delayed_step_fn(rhs, m=1, tau_steps=tau_steps, dt=dt)
+    state0, buf0 = scalar_delayed_history0(jnp.array([1.0]), tau_steps)
 
     result = lyapunov_spectrum_dde(
         step_fn, state0=state0, buf0=buf0, params={}, dt=dt,
@@ -130,9 +102,9 @@ def test_transient_floor_prevents_bias_from_short_user_transient():
     the same tolerance as a well-transiented run, not degrade silently."""
     a, tau, dt = 0.5, 0.3, 1e-2
     tau_steps = resolve_tau_steps(tau, dt)
-    step_fn = _make_linear_scalar_dde_step(a, tau_steps, dt)
-    state0 = jnp.array([[1.0]])
-    buf0 = constant_history_buf0(state0, tau_steps + 1)
+    rhs = systems.linear_scalar_dde(a=a)
+    step_fn = make_scalar_delayed_step_fn(rhs, m=1, tau_steps=tau_steps, dt=dt)
+    state0, buf0 = scalar_delayed_history0(jnp.array([1.0]), tau_steps)
     expected = float((lambertw(-a * tau, k=0) / tau).real)
 
     result = lyapunov_spectrum_dde(
@@ -157,10 +129,10 @@ def test_tangent_propagation_matches_dense_jacfwd():
     public DDE mechanism just to test the first one."""
     a, dt, tau_steps = 0.7, 0.05, 4
     horizon = tau_steps + 1
-    step_fn = _make_linear_scalar_dde_step(a, tau_steps, dt)
+    rhs = systems.linear_scalar_dde(a=a)
+    step_fn = make_scalar_delayed_step_fn(rhs, m=1, tau_steps=tau_steps, dt=dt)
 
-    state0 = jnp.array([[0.8]])
-    buf0 = constant_history_buf0(state0, horizon)
+    state0, buf0 = scalar_delayed_history0(jnp.array([0.8]), tau_steps)
     params = {}
     d_state, d_buf = state0.size, buf0.size
     d_total = d_state + d_buf
@@ -221,19 +193,9 @@ def test_mackey_glass_qualitative_chaos():
     beta, gamma, n, tau = 0.2, 0.1, 10.0, 17.0
     dt = 1.0
     tau_steps = resolve_tau_steps(tau, dt)
-    horizon = tau_steps + 1
-    model = _mackey_glass_model(beta, gamma, n)
-    dfun = build_jax_dfun(model)
-    weights = jnp.array([[1.0]])
-    params = {"beta": beta, "gamma": gamma, "n": n}
-    step_fn = make_step_fn(
-        dfun=dfun, weights=weights, has_delays=True, horizon=horizon,
-        n_nodes=1, cvar_indices=model.cvar_indices, dt=dt,
-        coupling_fn=linear_coupling(a=1.0, b=0.0, G_default=1.0),
-        tau_steps=tau_steps, use_heun=True,
-    )
-    state0 = jnp.array([[1.2]])
-    buf0 = constant_history_buf0(state0, horizon)
+    rhs = systems.mackey_glass(beta=beta, gamma=gamma, n=n)
+    step_fn = make_scalar_delayed_step_fn(rhs, m=1, tau_steps=tau_steps, dt=dt)
+    state0, buf0 = scalar_delayed_history0(jnp.array([1.2]), tau_steps)
 
     # k=8, not the full d_total=18 spectrum: the most contracting directions
     # underflow log|diag(R)| to -inf well before they're needed -- only the
@@ -241,7 +203,7 @@ def test_mackey_glass_qualitative_chaos():
     # anyway (same numerical-sensitivity note jitcdde's docs make about deep
     # negative exponents needing more frequent rescaling).
     result = lyapunov_spectrum_dde(
-        step_fn, state0=state0, buf0=buf0, params=params, dt=dt,
+        step_fn, state0=state0, buf0=buf0, params={}, dt=dt,
         n_steps=30_000, k=8, renorm_every=10, t_transient=3_000.0,
     )
 
@@ -259,6 +221,9 @@ def test_mackey_glass_qualitative_chaos():
 # ---------------------------------------------------------------------------
 # Scale benchmark: the actual point of the M4 redesign -- a delayed network
 # with d_total well beyond what a dense-jacfwd engine could handle per step.
+# Uses the general (ModelSpec/coupling_fn) front door directly, not the
+# scalar convenience layer above -- this is a real network, not a
+# non-networked system, so the full machinery is the right tool here.
 # ---------------------------------------------------------------------------
 
 def test_delayed_network_benchmark_scale():

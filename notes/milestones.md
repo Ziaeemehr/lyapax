@@ -374,6 +374,42 @@ already solved.
     first pass could not.
 - `scipy` added to the `dev` extra in `pyproject.toml` (for
   `scipy.special.lambertw` in the Tier 4.2 test).
+- **Follow-up (this session, API consistency):** raised in review — the ODE
+  side lets a non-networked system skip coupling machinery entirely
+  (`systems.py`'s plain `rhs(state) -> dstate`, no `ModelSpec` needed
+  unless there's an actual network, M3+), but the DDE side as first shipped
+  forced *every* system through `ModelSpec`/`coupling_fn`/the vendored
+  step, even a single scalar equation like Mackey-Glass, because the ring
+  buffer only existed inside that machinery. Fixed with a convenience
+  layer mirroring `systems.py` + `integrators.rk4_step`'s relationship on
+  the ODE side, without adding a second DDE mechanism (still the same
+  vendored ring buffer underneath):
+  - `lyapax.dde.make_scalar_delayed_step_fn(rhs_delayed, m, tau_steps, dt)`
+    — builds the trivial "coupled to your own delayed history" 1-node
+    self-loop wiring internally (raw `dfun`, identity `coupling_fn`, no
+    `ModelSpec`) around `lyapax.vendored.make_step_fn`, from a plain
+    `rhs_delayed(state_now, state_delayed) -> dstate`.
+  - `lyapax.dde.scalar_delayed_history0(state0_now, tau_steps)` — the
+    matching `(state0, buf0)` builder from a flat initial condition.
+  - `mackey_glass`/`linear_scalar_dde` restored to `src/lyapax/systems.py`
+    (Tier 4 section) as the math-only `rhs_delayed` builders that feed it,
+    same role `lorenz`/`rossler` play for the ODE case.
+  - `tests/test_dde.py`'s scalar-DDE tests rewritten against this new
+    front door (shorter, no `ModelSpec` boilerplate);
+    `test_delayed_network_benchmark_scale` kept on the direct
+    `ModelSpec`/`coupling_fn` path deliberately, for coverage of both
+    entry points into the one shared engine.
+  - **Bug caught while making this change:** `lyapunov_spectrum_dde`'s
+    transient-floor logic (`horizon*dt` minimum, see above) was gated
+    behind `if t_transient > 0.0`, so a caller passing exactly
+    `t_transient=0.0` skipped the transient block entirely — floor never
+    applied, defeating the guarantee. Fixed to run unconditionally (DDE
+    transients, unlike the ODE case, are never legitimately skippable).
+    `test_transient_floor_prevents_bias_from_short_user_transient` predates
+    the fix and happened to still pass (the first accumulation block's own
+    internal QR provided partial, accidental correction) — worth noting as
+    a reminder that a passing regression test doesn't always mean the
+    code path it's named for was actually exercised.
 
 ## M5 — Delayed networks (per-edge delay matrix)
 
@@ -388,8 +424,11 @@ already solved.
 ## M6 — Performance & usability
 
 - Matrix-free tangent propagation via `jax.jvp` (avoid materializing the
-  full Jacobian) for large `d * n_nodes` — needed once network size grows
-  past the toy validation cases.
+  full Jacobian) for large `d * n_nodes` — **done for the DDE path** as
+  part of M4's redesign (`lyapax.dde.lyapunov_spectrum_dde`); **still open
+  for the plain ODE/zero-delay-network path** (`lyapax.core.lyapunov_spectrum`
+  still uses dense `jacfwd`, a bottleneck for large *non-delayed* networks
+  specifically).
 - `vmap` over parameter grids / initial conditions for LE-vs-parameter
   sweeps (bifurcation-diagram-style), mirroring `vbi`'s `JaxSweeper` pattern
   but not reusing its code (per the vendoring decision).
@@ -401,7 +440,12 @@ already solved.
 - Adaptive-step ODE integration (diffrax) + Benettin, as an alternative to
   fixed-step for stiff/multi-timescale ODE systems.
 - State-dependent or distributed delays.
-- Sigmoidal/kuramoto coupling kernels in the DDE tangent path.
+- ~~Sigmoidal/kuramoto coupling kernels in the DDE tangent path~~ — **done**
+  as a side effect of M4's redesign: `coupling_fn` in
+  `lyapax.vendored.make_step_fn` is the same plain-callable abstraction M3
+  uses, so `lyapax.coupling.sigmoidal_coupling`/`kuramoto_coupling` already
+  work against delayed networks with no extra code (exercised by
+  `test_delayed_network_benchmark_scale`, a delayed Kuramoto network).
 
 ## Explicit non-goals for v1
 

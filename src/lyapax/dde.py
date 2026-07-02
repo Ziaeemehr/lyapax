@@ -48,10 +48,16 @@ import jax
 import jax.numpy as jnp
 
 from .core import LyapunovResult, _run_renorm_scan
+from .vendored import make_step_fn
 
 CarryStepFn = Callable
 """step(carry, _) -> (new_carry, new_state), carry = (state, buf, t, params)
 -- exactly what lyapax.vendored.make_step_fn(...) returns."""
+
+DelayedRHS = Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray]
+"""rhs_delayed(state_now, state_delayed) -> dstate, both shape (m,) --
+m=1 for a scalar DDE (e.g. Mackey-Glass), m>1 for a small non-networked
+vector DDE. See make_scalar_delayed_step_fn."""
 
 
 def resolve_tau_steps(tau: float, dt: float) -> int:
@@ -75,6 +81,65 @@ def constant_history_buf0(cvar_state0: jnp.ndarray, horizon: int) -> jnp.ndarray
     """
     cvar_state0 = jnp.asarray(cvar_state0)
     return jnp.tile(cvar_state0[None, :, :], (horizon, 1, 1))
+
+
+def make_scalar_delayed_step_fn(
+        rhs_delayed: DelayedRHS,
+        m: int,
+        tau_steps: int,
+        dt: float,
+        use_heun: bool = True,
+) -> CarryStepFn:
+    """
+    Build a carry-based step function for a simple, non-networked
+    fixed-delay DDE directly from a plain ``rhs_delayed`` -- no
+    ``ModelSpec``/``coupling_fn`` ceremony needed. Mirrors
+    ``lyapax.integrators.rk4_step``'s role on the ODE side: a lightweight
+    front door for the "just one system, no network" case, sitting next to
+    ``lyapax.vendored.make_step_fn`` (the general, ``ModelSpec``-based
+    front door used for real delayed networks, e.g.
+    ``tests/test_dde.py``'s benchmark test) -- both build a step for the
+    *same* underlying vendored ring-buffer simulator, so there is still
+    only one DDE mechanism, just two ways to construct a step for it (see
+    notes/milestones.md, M4, on why forcing every DDE through the network
+    machinery -- even a single scalar equation -- was a real usability gap
+    the ODE side never had).
+
+    Internally: a trivial "coupled to your own delayed history" 1-node
+    self-loop, with an identity coupling_fn (the delayed state passes
+    through unchanged; any scaling/nonlinearity belongs in ``rhs_delayed``
+    itself, not a coupling formula -- there's no real network here).
+
+    rhs_delayed : ``(state_now, state_delayed) -> dstate``, both shape
+        ``(m,)`` -- see ``DelayedRHS``.
+    m : state dimension (e.g. 1 for a scalar DDE like Mackey-Glass).
+    tau_steps : integer delay in units of ``dt`` (see ``resolve_tau_steps``).
+    """
+    def dfun(state, coupling, params):
+        return rhs_delayed(state[:, 0], coupling[:, 0])[:, None]
+
+    def _identity_coupling(cvar_state, weights, params):
+        return cvar_state
+
+    weights = jnp.ones((1, 1))
+    return make_step_fn(
+        dfun=dfun, weights=weights, has_delays=True, horizon=tau_steps + 1,
+        n_nodes=1, cvar_indices=tuple(range(m)), dt=dt,
+        coupling_fn=_identity_coupling, tau_steps=tau_steps, use_heun=use_heun,
+    )
+
+
+def scalar_delayed_history0(state0_now: jnp.ndarray, tau_steps: int):
+    """(state0, buf0) for make_scalar_delayed_step_fn, from a flat ``(m,)``
+    initial condition, under the constant-history DDE convention -- the
+    scalar-case counterpart to constant_history_buf0, hiding the
+    ``(n_sv, n_nodes)``/``(horizon, n_cvar, n_nodes)`` reshaping the
+    general (networked) path needs.
+    """
+    state0_now = jnp.asarray(state0_now)
+    state0 = state0_now[:, None]  # (m, 1)
+    buf0 = constant_history_buf0(state0, tau_steps + 1)  # (horizon, m, 1)
+    return state0, buf0
 
 
 def lyapunov_spectrum_dde(
@@ -190,23 +255,24 @@ def lyapunov_spectrum_dde(
 
     t0 = jnp.int32(0)
 
-    if t_transient > 0.0:
-        # Floor: at least one full ring cycle, same cadence as the main run
-        # (mirrors core.py's transient chunking, plus the DDE-specific
-        # ring-cycle floor from the module docstring).
-        min_transient = horizon * dt
-        n_transient = renorm_every * max(
-            1, round(max(t_transient, min_transient) / dt / renorm_every))
+    # Unconditional (unlike core.py's ODE transient, which is skippable via
+    # t_transient=0.0): a DDE always needs at least one full ring cycle
+    # (horizon * dt) before every buffer slot has been written from real
+    # dynamics -- see the t_transient docstring above. Floored, not
+    # skipped, even when the caller passes t_transient=0.0 exactly.
+    min_transient = horizon * dt
+    n_transient = renorm_every * max(
+        1, round(max(t_transient, min_transient) / dt / renorm_every))
 
-        def _transient_block(carry, _):
-            state, buf, t, Y_state, Y_buf = carry
-            state, buf, t, Y_state, Y_buf, _R = _advance(
-                state, buf, t, Y_state, Y_buf, renorm_every)
-            return (state, buf, t, Y_state, Y_buf), None
+    def _transient_block(carry, _):
+        state, buf, t, Y_state, Y_buf = carry
+        state, buf, t, Y_state, Y_buf, _R = _advance(
+            state, buf, t, Y_state, Y_buf, renorm_every)
+        return (state, buf, t, Y_state, Y_buf), None
 
-        (state0, buf0, t0, Y_state0, Y_buf0), _ = jax.lax.scan(
-            _transient_block, (state0, buf0, t0, Y_state0, Y_buf0), None,
-            length=n_transient // renorm_every)
+    (state0, buf0, t0, Y_state0, Y_buf0), _ = jax.lax.scan(
+        _transient_block, (state0, buf0, t0, Y_state0, Y_buf0), None,
+        length=n_transient // renorm_every)
 
     def _renorm_block(carry, _):
         state, buf, t, Y_state, Y_buf = carry
