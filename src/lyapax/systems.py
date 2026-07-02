@@ -1,7 +1,7 @@
 """Benchmark systems for validating the Lyapunov engine.
 
 Plain flat-vector JAX functions, deliberately independent of the vendored
-ModelSpec/coupling machinery in ``lyapax.vendored`` — these are single-node,
+ModelSpec/coupling machinery in ``lyapax.simulator`` — these are single-node,
 uncoupled textbook systems, so routing them through the string-expression
 codegen built for networked models would only add indirection. Each entry
 here corresponds to a tier in notes/validation_systems.md; see that doc for

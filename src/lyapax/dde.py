@@ -1,6 +1,6 @@
 """Fixed-delay DDE Lyapunov engine, on top of the vendored ring buffer (M4).
 
-Reuses the vendored ring-buffer simulator (``lyapax.vendored.step``) as-is
+Reuses the vendored ring-buffer simulator (``lyapax.simulator.step``) as-is
 rather than a second, parallel history mechanism: the genuinely missing
 piece was never "how do we store delayed history" (the vendored
 ``_write_ring``/``_read_delayed_coupling`` already do that correctly), it
@@ -39,7 +39,7 @@ so it already works correctly with a genuine per-edge (heterogeneous)
 delay matrix via the vendored step's legacy, hardcoded-linear coupling
 path (``coupling_fn=None``, ``delay_steps=<(n_nodes,n_nodes) matrix>``,
 verified directly against an asymmetric 2-node case). The real scope limit
-lives in ``lyapax.vendored.make_step_fn``, not here: a *custom*
+lives in ``lyapax.simulator.make_step_fn``, not here: a *custom*
 ``coupling_fn`` (``lyapax.coupling``'s plain-callable style, e.g. for a
 delayed sigmoidal/Kuramoto network) is currently only wired up for
 zero-delay and *uniform*-delay (single global ``tau_steps``) branches --
@@ -54,11 +54,11 @@ import jax
 import jax.numpy as jnp
 
 from .core import LyapunovResult, _run_renorm_scan
-from .vendored import make_step_fn
+from .simulator import make_step_fn
 
 CarryStepFn = Callable
 """step(carry, _) -> (new_carry, new_state), carry = (state, buf, t, params)
--- exactly what lyapax.vendored.make_step_fn(...) returns."""
+-- exactly what lyapax.simulator.make_step_fn(...) returns."""
 
 DelayedRHS = Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray]
 """rhs_delayed(state_now, state_delayed) -> dstate, both shape (m,) --
@@ -102,7 +102,7 @@ def make_scalar_delayed_step_fn(
     ``ModelSpec``/``coupling_fn`` ceremony needed. Mirrors
     ``lyapax.integrators.rk4_step``'s role on the ODE side: a lightweight
     front door for the "just one system, no network" case, sitting next to
-    ``lyapax.vendored.make_step_fn`` (the general, ``ModelSpec``-based
+    ``lyapax.simulator.make_step_fn`` (the general, ``ModelSpec``-based
     front door used for real delayed networks, e.g.
     ``tests/test_dde.py``'s benchmark test) -- both build a step for the
     *same* underlying vendored ring-buffer simulator, so there is still
@@ -170,7 +170,7 @@ def lyapunov_spectrum_dde(
     ----------
     step_fn : ``step(carry, _) -> (new_carry, new_state)``, carry =
         ``(state, buf, t, params)`` -- from
-        ``lyapax.vendored.make_step_fn(..., coupling_fn=..., tau_steps=...)``.
+        ``lyapax.simulator.make_step_fn(..., coupling_fn=..., tau_steps=...)``.
     state0 : (n_sv, n_nodes) initial state (pre-transient).
     buf0 : (horizon, n_cvar, n_nodes) initial ring buffer (see
         ``constant_history_buf0``).

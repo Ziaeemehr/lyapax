@@ -4,7 +4,7 @@ for genuine per-edge (heterogeneous) delayed networks.
 Unlike M4, this needed no new engine code: lyapax.dde.lyapunov_spectrum_dde
 already differentiates through whatever carry step_fn produces regardless
 of delay structure, so a per-edge delay_steps matrix (via the untouched
-legacy lyapax.vendored.make_step_fn(coupling_fn=None, delay_steps=...)
+legacy lyapax.simulator.make_step_fn(coupling_fn=None, delay_steps=...)
 path) just works -- see notes/milestones.md (M5) for how this was verified
 before writing any new code. These tests are the validation that
 verification implied, not proof of new machinery.
@@ -17,7 +17,7 @@ from lyapax.core import lyapunov_spectrum
 from lyapax.dde import lyapunov_spectrum_dde, constant_history_buf0, resolve_tau_steps
 from lyapax.network import make_network_step_fn
 from lyapax.coupling import linear_coupling
-from lyapax.vendored import ModelSpec, StateVar, Parameter, build_jax_dfun, make_step_fn, Connectivity
+from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun, make_step_fn, Connectivity
 
 
 def _linear_node_model(gamma: float) -> ModelSpec:

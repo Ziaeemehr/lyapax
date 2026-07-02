@@ -2,7 +2,7 @@
 into the flat ``state -> new_state`` shape ``lyapax.core.lyapunov_spectrum``
 expects.
 
-Built on the vendored ring-buffer step (``lyapax.vendored.make_step_fn``,
+Built on the vendored ring-buffer step (``lyapax.simulator.make_step_fn``,
 ``has_delays=False``) via a thin carry-to-flat adapter, not a second,
 independent Euler/Heun implementation. M3 originally built its own (this
 module used to have local ``_euler``/``_heun`` copies, byte-for-byte
@@ -27,7 +27,7 @@ from typing import Callable
 import jax.numpy as jnp
 
 from .coupling import CouplingFn
-from .vendored import make_step_fn
+from .simulator import make_step_fn
 
 StepFlat = Callable[[jnp.ndarray], jnp.ndarray]
 
@@ -46,7 +46,7 @@ def make_network_step_fn(
     function for use with ``lyapax.core.lyapunov_spectrum``.
 
     dfun : ``(state, coupling, params) -> dstate``, e.g. from
-        ``lyapax.vendored.build_jax_dfun(model_spec)``. ``state`` and
+        ``lyapax.simulator.build_jax_dfun(model_spec)``. ``state`` and
         ``coupling`` are ``(n_sv, n_nodes)`` / ``(n_cvar, n_nodes)``.
     weights : (n_nodes, n_nodes), ``weights[tgt, src]``.
     cvar_indices : indices into the state-variable axis selecting which

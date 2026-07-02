@@ -33,7 +33,7 @@ opinion baked in (see the M7 note in notes/milestones.md: this worked
 "for free" once M4 gave the ring buffer a ``coupling_fn`` slot). The delay
 =0 run goes through ``lyapax.network.make_network_step_fn`` +
 ``lyapax.core.lyapunov_spectrum`` exactly as in ``plot_05``; the delayed
-run goes through ``lyapax.vendored.make_step_fn(..., coupling_fn=...,
+run goes through ``lyapax.simulator.make_step_fn(..., coupling_fn=...,
 tau_steps=...)`` (the *uniform*-delay branch -- a single global ``tau``
 shared by every edge, not the per-edge ``delay_steps`` matrix from
 ``plot_08_delayed_coupling.py``) + ``lyapax.dde.lyapunov_spectrum_dde``.
@@ -61,7 +61,7 @@ from lyapax.core import lyapunov_spectrum
 from lyapax.dde import lyapunov_spectrum_dde, constant_history_buf0, resolve_tau_steps
 from lyapax.coupling import kuramoto_coupling
 from lyapax.network import make_network_step_fn
-from lyapax.vendored import ModelSpec, StateVar, Parameter, build_jax_dfun, make_step_fn
+from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun, make_step_fn
 
 # %%
 n_nodes = 6

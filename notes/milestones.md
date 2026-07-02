@@ -107,7 +107,7 @@ already solved.
 
 ## M0 — Scaffolding & design lock-in — ✅ done
 
-- Repo layout: `src/lyapax/vendored/`, `tests/`; `pyproject.toml` (setuptools,
+- Repo layout: `src/lyapax/simulator/`, `tests/`; `pyproject.toml` (setuptools,
   src-layout, `pytest` config). Package installs editable
   (`pip install -e .`) into `vbienv` (jax 0.10.0, the dev/test env used for
   `vbi` too).
@@ -122,14 +122,14 @@ already solved.
   to CPU via `JAX_PLATFORMS=cpu`; GPU verification is out of scope until M6,
   and will need a working cudnn install first (infra issue, not a `lyapax`
   bug).
-- Vendored (copied, trimmed) from `vbi` into `src/lyapax/vendored/`:
+- Vendored (copied, trimmed) from `vbi` into `src/lyapax/simulator/`:
   `model_spec.py` (`ModelSpec`/`StateVar`/`Parameter`), `coupling.py`
   (`CouplingSpec` — linear only — and a trimmed `Connectivity` with
   `delay_steps`/`horizon`), `step.py` (`build_jax_dfun` codegen +
   `make_step_fn`, the ring-buffer `step(carry, _)` factory). Dropped:
   monitors, stimuli, BOLD/Balloon-Windkessel, the sweeper, stochastic noise,
   state clipping, sigmoidal/kuramoto coupling — see
-  `src/lyapax/vendored/NOTICE.md` for the full provenance/diff list
+  `src/lyapax/simulator/NOTICE.md` for the full provenance/diff list
   (vbi is Apache-2.0; NOTICE.md carries the required attribution).
 - **Definition of done — met:** `pytest tests/` passes 4/4:
   `test_x64_enabled`, `test_running_on_cpu`, and two plumbing checks —
@@ -150,7 +150,7 @@ already solved.
   prediction here that "M3 will need a thin adapter from the vendored step"
   turned out wrong; M3 built its own separate flat-state step function
   (`lyapax.network.make_network_step_fn`) instead of adapting the vendored
-  one, which is why M4 later found `network.py` and `vendored/step.py`
+  one, which is why M4 later found `network.py` and `simulator/step.py`
   independently reimplementing byte-for-byte identical `_euler`/`_heun`
   helpers — see the M5 section below.
 - Tangent propagation: `(d, k)` tangent matrix `Y`, random-orthonormal
@@ -272,7 +272,7 @@ already solved.
   augmentation — folding a sliding history window into a flat `state` fed
   through the unmodified M1 dense-`jacfwd` engine. It worked but built a
   second, parallel DDE mechanism instead of reusing the already-correct,
-  already-tested vendored ring buffer (`lyapax.vendored.step`), and its
+  already-tested vendored ring buffer (`lyapax.simulator.step`), and its
   dense tangent propagation (O(horizon²) per step) doesn't scale to real
   coupled delayed networks, which is the actual target use case (raised in
   review: "the whole story was to be able to work on large systems of
@@ -293,11 +293,11 @@ already solved.
   finite-size ring buffer the correct, simpler specialization — and the
   tangent space is already finite-dimensional, so a plain `jnp.linalg.qr`
   suffices where jitcdde needs a continuous-function inner product.
-- **`src/lyapax/vendored/step.py`** (additive, backward-compatible —
+- **`src/lyapax/simulator/step.py`** (additive, backward-compatible —
   `tests/test_setup.py`'s two call sites use only keyword args, so the
   original `G_default`/`coup_a`/`coup_b`/`delay_steps`-based behavior is
   byte-for-byte unchanged when the new params are omitted; see
-  `vendored/NOTICE.md` for the deviation writeup): `make_step_fn` gained
+  `simulator/NOTICE.md` for the deviation writeup): `make_step_fn` gained
   `coupling_fn` (a `lyapax.coupling`-style plain callable, replacing the
   hardcoded linear formula) and `tau_steps` (a single global delay). A new
   `_read_uniform_delayed_cvar` (O(1) modular ring-buffer read) handles the
@@ -312,7 +312,7 @@ already solved.
 - **`src/lyapax/dde.py`** (rewritten): `lyapunov_spectrum_dde(step_fn,
   state0, buf0, params, dt, n_steps, k=None, renorm_every=1,
   t_transient=0.0, seed=0) -> LyapunovResult`, operating on
-  `lyapax.vendored.make_step_fn(..., coupling_fn=..., tau_steps=...)`'s
+  `lyapax.simulator.make_step_fn(..., coupling_fn=..., tau_steps=...)`'s
   carry-based step. Tangent state `(Y_state, Y_buf)` mirrors the primal
   carry's shapes plus a trailing `k` axis; per raw step, all `k` tangent
   columns propagate via one `jax.vmap`-batched `jax.jvp` call — O(k)
@@ -393,7 +393,7 @@ already solved.
   - `lyapax.dde.make_scalar_delayed_step_fn(rhs_delayed, m, tau_steps, dt)`
     — builds the trivial "coupled to your own delayed history" 1-node
     self-loop wiring internally (raw `dfun`, identity `coupling_fn`, no
-    `ModelSpec`) around `lyapax.vendored.make_step_fn`, from a plain
+    `ModelSpec`) around `lyapax.simulator.make_step_fn`, from a plain
     `rhs_delayed(state_now, state_delayed) -> dstate`.
   - `lyapax.dde.scalar_delayed_history0(state0_now, tau_steps)` — the
     matching `(state0, buf0)` builder from a flat initial condition.
@@ -431,14 +431,14 @@ already solved.
   cleanup (below) — not new engine architecture. The one still-genuine gap
   (already flagged in M4, unchanged): a *custom* `coupling_fn`
   (sigmoidal/Kuramoto-style) combined with per-edge delays needs the
-  edge-aware `coupling_fn` signature fork noted in the M4 vendored/step.py
+  edge-aware `coupling_fn` signature fork noted in the M4 simulator/step.py
   bullet — linear per-edge-delayed coupling works today via the legacy path.
 - **Cleanup folded in:** `lyapax.network.make_network_step_fn` (M3,
   zero-delay only) used to carry its own `_euler`/`_heun`, byte-for-byte
-  identical to `lyapax.vendored.make_step_fn`'s — built that way because
+  identical to `lyapax.simulator.make_step_fn`'s — built that way because
   M3 predates M4's carry-based Lyapunov engine, so at the time there was
   no way to feed a carry-based step into anything. Retired: `network.py`
-  now delegates to `vendored.make_step_fn(has_delays=False, ...)` via a
+  now delegates to `simulator.make_step_fn(has_delays=False, ...)` via a
   thin carry-to-flat adapter (for `has_delays=False` the vendored step's
   `buf` never changes and `t` is never read, so closing over a fixed
   placeholder `buf`/`t` and only threading `state` through
@@ -466,6 +466,20 @@ already solved.
     committing to this formula; an earlier draft of this note had it
     imprecisely as `gamma +/- W(...)`). Matches to `5e-3` at
     `gamma=-1, G=0.5, tau=0.3`.
+- **Follow-up, post-M5 (this session): `src/lyapax/vendored/` renamed to
+  `src/lyapax/simulator/`**, along with two new example demos
+  (`examples/plot_08_delayed_coupling.py` — per-edge delay sweep against
+  the Tier 4.3 Lambert W solution; `examples/plot_09_kuramoto_delayed_network.py`
+  — delayed Kuramoto network, extending `plot_05`). Rationale: `vendored`
+  named the module after *where the code came from* (copied from `vbi`),
+  which reads fine in a design doc but is a confusing name to import and
+  call day-to-day; `simulator` names it after *what it does* (compiles
+  `ModelSpec`/`Connectivity` into the ring-buffer JAX step function).
+  Provenance is unaffected — `simulator/NOTICE.md` still carries the
+  vbi attribution — this was a rename, not a re-scoping. All `lyapax.vendored`
+  import paths (source, tests, examples) and path references in this doc
+  were updated together (verified: all 27 tests still pass, both new
+  example scripts run standalone and reproduce their closed-form checks).
 
 ## M6 — Performance & usability
 
@@ -488,7 +502,7 @@ already solved.
 - State-dependent or distributed delays.
 - ~~Sigmoidal/kuramoto coupling kernels in the DDE tangent path~~ — **done**
   as a side effect of M4's redesign: `coupling_fn` in
-  `lyapax.vendored.make_step_fn` is the same plain-callable abstraction M3
+  `lyapax.simulator.make_step_fn` is the same plain-callable abstraction M3
   uses, so `lyapax.coupling.sigmoidal_coupling`/`kuramoto_coupling` already
   work against delayed networks with no extra code (exercised by
   `test_delayed_network_benchmark_scale`, a delayed Kuramoto network).

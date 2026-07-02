@@ -1,7 +1,7 @@
 """General-purpose fixed-step ODE integrators.
 
 Independent of the vendored (Euler/Heun) integrators in
-``lyapax.vendored.step`` — those are tied to the coupling/ring-buffer
+``lyapax.simulator.step`` — those are tied to the coupling/ring-buffer
 plumbing for network models (M3+). These are plain ``state -> new_state``
 maps for standalone benchmark systems (Lorenz, Rössler, ...), where RK4's
 better accuracy at a given dt matters for getting a clean Lyapunov-exponent

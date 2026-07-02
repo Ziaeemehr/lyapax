@@ -29,10 +29,10 @@ form is valid, so every plotted "exact" point is trustworthy.
 
 **The machinery.** Genuinely delayed coupling (as opposed to M4's "coupled
 to your own past" scalar DDEs) needs the general, per-edge ``delay_steps``
-path: ``vendored.Connectivity(weights, tract_lengths, speed)`` turns a
+path: ``simulator.Connectivity(weights, tract_lengths, speed)`` turns a
 physical ``tau`` into an integer ``delay_steps`` matrix and ring-buffer
 ``horizon``, exactly as ``lyapax.dde.resolve_tau_steps`` does for the
-scalar case -- then ``vendored.make_step_fn(..., delay_steps=...)`` and
+scalar case -- then ``simulator.make_step_fn(..., delay_steps=...)`` and
 ``lyapax.dde.lyapunov_spectrum_dde`` do the rest (see M5 in
 notes/milestones.md: no new engine code was needed for per-edge delays,
 only validation).
@@ -51,7 +51,7 @@ from scipy.special import lambertw
 jax.config.update("jax_enable_x64", True)
 
 from lyapax.dde import lyapunov_spectrum_dde, constant_history_buf0
-from lyapax.vendored import ModelSpec, StateVar, Parameter, build_jax_dfun, make_step_fn, Connectivity
+from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun, make_step_fn, Connectivity
 
 # %%
 gamma, G, dt = -1.0, 0.5, 1e-3

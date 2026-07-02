@@ -1,6 +1,6 @@
 """M4 validation tests: Tier 4 from notes/validation_systems.md, plus
 engine-mechanism checks for the DDE Lyapunov engine (src/lyapax/dde.py),
-which reuses the vendored ring-buffer simulator (src/lyapax/vendored/step.py)
+which reuses the vendored ring-buffer simulator (src/lyapax/simulator/step.py)
 rather than a second history mechanism -- see notes/milestones.md (M4) for
 the design.
 
@@ -27,7 +27,7 @@ from lyapax.dde import (
     make_scalar_delayed_step_fn, scalar_delayed_history0,
 )
 from lyapax.coupling import kuramoto_coupling
-from lyapax.vendored import ModelSpec, StateVar, Parameter, build_jax_dfun, make_step_fn
+from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun, make_step_fn
 from lyapax import systems
 
 

@@ -22,7 +22,7 @@ shifting and scaling by ``gamma=-2, G=0.5`` gives ``A``'s eigenvalues
 ``{-1, -2, -2, -3}``.
 
 **The machinery.** ``ModelSpec``/``build_jax_dfun`` (vendored from vbi,
-see ``src/lyapax/vendored/NOTICE.md``) compile a symbolic per-node
+see ``src/lyapax/simulator/NOTICE.md``) compile a symbolic per-node
 right-hand side -- here the string ``"gamma * x + c"`` -- into a JAX
 function, rather than hand-writing the node dynamics as in the earlier
 examples; ``c`` is always the coupling input. ``make_network_step_fn``
@@ -46,7 +46,7 @@ jax.config.update("jax_enable_x64", True)
 from lyapax.core import lyapunov_spectrum
 from lyapax.coupling import linear_coupling
 from lyapax.network import make_network_step_fn
-from lyapax.vendored import ModelSpec, StateVar, Parameter, build_jax_dfun
+from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
 
 # %%
 # 4-cycle graph adjacency (symmetric -> real eigenvalues): {2, 0, 0, -2}.
