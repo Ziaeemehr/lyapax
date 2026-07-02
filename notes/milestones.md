@@ -557,8 +557,39 @@ already solved.
     `plot_05`'s figure via the vmap sweep, printing the max-diff against a
     fresh Python-loop run of the same system for a direct correctness
     check alongside the speed comparison.
-- GPU smoke test (no correctness change expected, just confirm it runs).
-- Packaging: `pyproject.toml`, README, one or two example notebooks.
+- **GPU smoke test — ✅ done (this session).** M0's blocker
+  (`INTERNAL: RET_CHECK ... dnn_support != nullptr` on any real op despite
+  `jax.devices()` listing a `CudaDevice`) is resolved on this dev machine —
+  confirmed by hand first (`jnp.dot` on a small array actually executes on
+  `cuda:0`, not just device-enumerates), then via the new
+  `tests/test_gpu.py`. **Skipped by default**, opt in with
+  `JAX_PLATFORMS=cuda pytest tests/test_gpu.py`: `tests/conftest.py` sets
+  `JAX_PLATFORMS=cpu` via `os.environ.setdefault`, which only applies if
+  the variable isn't already set, so exporting it before pytest starts
+  overrides the CPU default without touching `conftest.py` — the rest of
+  the suite stays CPU-only and unaffected (`32 passed, 2 skipped` when run
+  without the override, `2 passed` when run with it).
+  - `test_lorenz_lambda1_matches_published_value_on_gpu`: the exact same
+    system/tolerances as `test_lyapunov_core.py`'s CPU version, run on
+    GPU — same published-value agreement (`λ1` within `0.08` of `0.9056`),
+    device asserted to actually be `cuda:0` (not silently falling back to
+    CPU).
+  - `test_large_network_matrix_free_path_runs_on_gpu`: the 200-node
+    Kuramoto network from `test_network.py`'s M6 matrix-free benchmark,
+    run on GPU — finite `k=5` output, `0.434s` warm (vs. the `0.24s`
+    CPU dense-vs-jvp comparison number logged above; not a controlled
+    CPU-vs-GPU comparison, just confirms the jvp/vmap path itself works on
+    GPU, which was the actual scope of this bullet — no correctness change
+    expected or found).
+- **Packaging (README polish, example notebooks) — postponed, not required
+  for v1.** Decision this session: `examples/*.py` (sphinx-gallery format)
+  already cover every capability with runnable, self-contained demos; a
+  polished README and notebook conversion are documentation tasks, not
+  functionality, and can wait until the API is otherwise stable.
+- `notes/benchmark_report.md` (cross-tool validation against
+  jitcode/jitcdde/ChaosTools.jl) — also postponed per this session's
+  decision; already marked "draft skeleton, paused" in that file with its
+  own "Open TODOs" resume list.
 
 ## M7 — Stretch goals (not required for v1)
 
@@ -589,9 +620,10 @@ already solved.
       better name comes up.
 - [x] Minimum JAX version: `>=0.10`, matching the version installed and
       tested against in `vbienv` (0.10.0).
-- [ ] GPU: currently unusable on the dev machine (cudnn/driver mismatch,
-      see M0). Not blocking — v1 targets CPU correctness first (M1-M5); GPU
-      is M6 and needs the environment fixed independently of this codebase.
+- [x] GPU: was unusable on the dev machine (cudnn/driver mismatch, see M0);
+      confirmed fixed in M6 (environment change, independent of this
+      codebase) — `tests/test_gpu.py` runs real Lyapunov computations on
+      `cuda:0` with correct output, opt-in via `JAX_PLATFORMS=cuda`.
 - [x] Whether M1's Jacobian should default to `jacfwd` (dense, simple) or
       `jvp`-per-column from the start — went dense for M1/M3 as recommended
       here, and that was the right call: M4 needed matrix-free `jvp`

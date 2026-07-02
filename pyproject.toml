@@ -13,9 +13,9 @@ authors = [
 ]
 readme = "README.md"
 
-# Verified against jax==0.10.0 in the local dev environment (vbienv).
-# GPU execution is currently untested here: the machine's cudnn/driver
-# combination fails (see notes/milestones.md) so CI/dev defaults to CPU.
+# Verified against jax==0.10.2 in the local dev environment (lyapax venv).
+# CI/dev defaults to CPU (see tests/conftest.py); GPU is opt-in and
+# verified working as of M6 -- see notes/milestones.md and tests/test_gpu.py.
 dependencies = [
     "jax>=0.10",
     "numpy>=1.23",
