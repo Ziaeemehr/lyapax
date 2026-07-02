@@ -13,8 +13,10 @@ of custom coupling functions, a speed/accuracy characterization of the
 current implementation, delayed (DDE) networks -- both a per-edge linear
 delay sweep against a closed-form (Lambert W) reference and a delayed
 Kuramoto network showing what transmission delay does to synchronization
-(Tier 4-5) -- and the M6 matrix-free (jvp/vmap) tangent-propagation speedup
-on a large network.
+(Tier 4-5) -- the M6 matrix-free (jvp/vmap) tangent-propagation speedup on
+a large network, and M6's jax.vmap parameter-sweep helper (one batched call
+reproducing the earlier Python-loop G-sweep, faster and bit-for-bit
+identical).
 
 New capability -> new demo: as engine features land (a new coupling kind, a
 new delay structure, a performance change, ...), add a runnable example

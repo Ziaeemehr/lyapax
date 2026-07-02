@@ -32,6 +32,51 @@ from .simulator import make_step_fn
 StepFlat = Callable[[jnp.ndarray], jnp.ndarray]
 
 
+StepFlatParametrized = Callable[[jnp.ndarray, dict], jnp.ndarray]
+
+
+def make_parametrized_network_step_fn(
+        dfun: Callable,
+        weights: jnp.ndarray,
+        cvar_indices: tuple[int, ...],
+        dt: float,
+        coupling_fn: CouplingFn,
+        use_heun: bool = True,
+) -> StepFlatParametrized:
+    """
+    Same wiring as ``make_network_step_fn``, except ``params`` is a plain
+    call-time argument, ``(state_flat, params) -> new_state_flat``, instead
+    of being closed over at construction time -- for M6's ``jax.vmap``
+    parameter sweeps (``lyapax.sweep.sweep_lyapunov_spectrum``), where
+    ``params`` needs to be data the vmapped function can batch over, not a
+    baked-in Python constant. Works because ``lyapax.simulator.make_step_fn``
+    already threads ``params`` through the scanned carry rather than
+    closing over it (see that function's docstring) -- this adapter was
+    the only piece still closing params in early, so it's the only piece
+    that needed to change.
+
+    dfun, weights, cvar_indices, coupling_fn, use_heun : see
+        ``make_network_step_fn``.
+    """
+    n_nodes = weights.shape[0]
+    n_cvar = len(cvar_indices)
+    carry_step = make_step_fn(
+        dfun=dfun, weights=weights, has_delays=False, horizon=1,
+        n_nodes=n_nodes, cvar_indices=cvar_indices, dt=dt,
+        coupling_fn=coupling_fn, use_heun=use_heun,
+    )
+    buf0 = jnp.zeros((1, n_cvar, n_nodes))
+
+    def step_flat(state_flat: jnp.ndarray, params: dict) -> jnp.ndarray:
+        n_sv = state_flat.shape[0] // n_nodes
+        state = state_flat.reshape((n_sv, n_nodes))
+        (new_state, _new_buf, _t, _params), _ = carry_step(
+            (state, buf0, jnp.int32(0), params), None)
+        return new_state.reshape(-1)
+
+    return step_flat
+
+
 def make_network_step_fn(
         dfun: Callable,
         weights: jnp.ndarray,
@@ -51,25 +96,13 @@ def make_network_step_fn(
     weights : (n_nodes, n_nodes), ``weights[tgt, src]``.
     cvar_indices : indices into the state-variable axis selecting which
         rows of ``state`` feed the coupling (``ModelSpec.cvar_indices``).
-    params : closed over for this step function; not swept here (M6).
+    params : closed over for this step function. To sweep over params via
+        ``jax.vmap`` instead, use ``make_parametrized_network_step_fn`` +
+        ``lyapax.sweep.sweep_lyapunov_spectrum`` (M6).
     coupling_fn : see ``lyapax.coupling`` — any callable with signature
         ``(cvar_state, weights, params) -> coupling`` works, including a
         user-defined one.
     """
-    n_nodes = weights.shape[0]
-    n_cvar = len(cvar_indices)
-    carry_step = make_step_fn(
-        dfun=dfun, weights=weights, has_delays=False, horizon=1,
-        n_nodes=n_nodes, cvar_indices=cvar_indices, dt=dt,
-        coupling_fn=coupling_fn, use_heun=use_heun,
-    )
-    buf0 = jnp.zeros((1, n_cvar, n_nodes))
-
-    def step_flat(state_flat: jnp.ndarray) -> jnp.ndarray:
-        n_sv = state_flat.shape[0] // n_nodes
-        state = state_flat.reshape((n_sv, n_nodes))
-        (new_state, _new_buf, _t, _params), _ = carry_step(
-            (state, buf0, jnp.int32(0), params), None)
-        return new_state.reshape(-1)
-
-    return step_flat
+    step_flat_p = make_parametrized_network_step_fn(
+        dfun, weights, cvar_indices, dt, coupling_fn, use_heun)
+    return lambda state_flat: step_flat_p(state_flat, params)

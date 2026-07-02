@@ -516,9 +516,47 @@ already solved.
     network, `k=5`, `n_steps=2_000` — finite output, well under the 30s CI
     ceiling.
   - Total suite: 29/29 passing (27 prior + the 2 new tests above).
-- `vmap` over parameter grids / initial conditions for LE-vs-parameter
-  sweeps (bifurcation-diagram-style), mirroring `vbi`'s `JaxSweeper` pattern
-  but not reusing its code (per the vendoring decision).
+- **`vmap` over parameter grids / initial conditions for LE-vs-parameter
+  sweeps — ✅ done (this session).** Mirrors `vbi`'s `JaxSweeper` pattern
+  (batch a simulation over a parameter grid) without reusing its code (per
+  the vendoring decision) — and needed almost no new code, because
+  `lyapax.simulator.make_step_fn`'s carry already threads `params` through
+  as data rather than closing over it (see that function's docstring —
+  anticipated from M0/M4 specifically for this). The only piece that still
+  closed over `params` at construction time was the thin
+  `lyapax.network.make_network_step_fn` adapter; its new sibling
+  `make_parametrized_network_step_fn` takes `params` as a call-time
+  argument instead (`(state, params) -> new_state`), and `params` alone is
+  swept with `jax.vmap`.
+  - `src/lyapax/sweep.py` (new): `sweep_lyapunov_spectrum(step_fn, state0,
+    params_batch, dt, n_steps, k=None, renorm_every=1, t_transient=0.0,
+    seed=0, state0_batch=None) -> LyapunovResult` (every field gets an
+    extra leading batch axis). Implementation is `jax.vmap` wrapped around
+    a single, unmodified call to `lyapax.core.lyapunov_spectrum` — no new
+    tangent-propagation or QR code, since batching is orthogonal to what
+    the engine actually computes. `state0_batch` covers the
+    "or initial conditions" half of this bullet — vmaps `(params, state0)`
+    together when given, instead of a fixed `state0` shared across the grid.
+  - **Definition of done — met:** `tests/test_sweep.py`, 3/3 passing (32/32
+    total across the whole suite): a `G`-sweep matches a Python-loop
+    reference over `lyapunov_spectrum` to `1e-8` (in practice: bit-for-bit
+    identical, `0.0` max diff observed — same computation, just batched,
+    not an independent numerical method); the exact `G=0`
+    zero-spectrum identity holds across every element of a batch, not just
+    one Python-loop call; and an initial-condition sweep
+    (`state0_batch`) on the Tier 3.1 linear network matches the exact
+    eigenvalues for every row.
+  - **Measured speedup:** the `plot_05`-style 13-point Kuramoto `G` sweep,
+    ~2.9x faster as one vmapped call (`1.38s`) vs. the Python loop
+    (`4.05s`) — smaller than the ~23x matrix-free win above (this is
+    dispatch-overhead amortization across grid points on CPU, not an
+    algorithmic complexity change; expect a bigger win on GPU, where the
+    grid points can execute with genuine hardware parallelism instead of
+    just avoiding repeated Python-level dispatch).
+  - New demo: `examples/plot_11_vmap_parameter_sweep.py` — reproduces
+    `plot_05`'s figure via the vmap sweep, printing the max-diff against a
+    fresh Python-loop run of the same system for a direct correctness
+    check alongside the speed comparison.
 - GPU smoke test (no correctness change expected, just confirm it runs).
 - Packaging: `pyproject.toml`, README, one or two example notebooks.
 
