@@ -603,6 +603,57 @@ already solved.
   work against delayed networks with no extra code (exercised by
   `test_delayed_network_benchmark_scale`, a delayed Kuramoto network).
 
+## M8 — Package review follow-ups (deferred from notes/package_review.md, 2026-07-02)
+
+An external structured review (`notes/package_review.md`) covered 9
+dimensions; most actionable findings were fixed directly in the same
+session (stale `__init__.py` docstring/exports, README rewrite, x64
+runtime warning, `renorm_every` validation, `lyapax.dde.tau_eff` +
+rounding warning, `history` sort-order docs, `check_finite` opt-in on both
+engines, GitHub Actions CI, ruff config + cleanup, and a new Rössler
+divergence-identity test). The remaining items are lower-priority or
+genuine design decisions, tracked here instead of done inline:
+
+- [ ] `exec()` in `build_jax_dfun` (`simulator/step.py`) has no docstring
+  note that `dfun_str` is trusted code — expressions are spliced directly
+  into generated source with no sanitization, so a spec built from
+  untrusted input is a real code-injection path, not just a style nit.
+  Add a docstring warning; consider stricter allowed-name validation or
+  an expression parser if lyapax ever accepts model specs from untrusted
+  sources.
+- [ ] dt-convergence regression tests: only one DDE test compares two
+  `dt` values; the Lorenz/Rössler chaotic-flow tests each use a single
+  fixed `dt`. Add a convergence-vs-`dt` test for at least one ODE
+  (Lorenz or Rössler) and one more DDE case, per the review's Section 2
+  "Improvement".
+- [ ] Diffrax adapter for adaptive/stiff ODE integration — already
+  tracked as an M7 stretch goal; diffrax has no DDE support as of M0's
+  research, so this would be ODE-only.
+- [ ] `pmap`/`shard_map` examples for multi-device parameter sweeps —
+  M6's `sweep.py` is single-device `jax.vmap` only; document that
+  explicitly and add a `jit(vmap(...))` example before considering
+  multi-device.
+- [ ] Type `Protocol`s for `StepFn`/`CarryStepFn`/`CouplingFn` and
+  parameter pytrees, replacing the current broad `Callable`/`dict`
+  annotations — mostly a discoverability/IDE-support improvement, not a
+  correctness gap.
+- [ ] A convergence-helper utility summarizing last-window drift in
+  `LyapunovResult.history` (relative/absolute change over the tail of
+  the run) — nice-to-have, no test currently depends on it.
+- [ ] Vectorized per-coupling-variable delayed gather in
+  `_read_delayed_coupling` (currently a small static Python loop) — only
+  worth it if multi-cvar delayed systems become common; current loop
+  count is static and small.
+- [ ] Dependency pinning / a tested-version lockfile — deferred while
+  still at `0.0.1`; broad `jax>=0.10`/`numpy>=1.23` bounds are fine for
+  now.
+- [ ] Move milestone-history comments (`-- see notes/milestones.md, M4`
+  etc.) out of source into docs, keeping code comments focused on
+  current invariants — style-only, low priority.
+- [ ] Optional GPU CI job / periodic manual validation record — CI added
+  in this session is CPU-only per the review's own recommendation;
+  `tests/test_gpu.py` stays opt-in and manually run for now.
+
 ## Explicit non-goals for v1
 
 - Stochastic (noise-driven) Lyapunov exponents / finite-time LE under noise.
