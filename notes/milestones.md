@@ -144,9 +144,15 @@ already solved.
   in `src/lyapax/core.py`. `step_fn` is a plain `state (d,) -> new_state (d,)`
   function (parameters closed over by the caller) — deliberately independent
   of the vendored carry-based `step(carry, _)` from M0, since single-node
-  ODE needs none of the coupling/ring-buffer machinery. M3 will need a
-  thin adapter from the vendored step to this shape; M4/M5 will need a
-  variant that also carries tangent state for the delay buffer.
+  ODE needs none of the coupling/ring-buffer machinery. M4 needed (and got)
+  a variant that also carries tangent state for the delay buffer
+  (`lyapax.dde.lyapunov_spectrum_dde`) — **correction, this session:** the
+  prediction here that "M3 will need a thin adapter from the vendored step"
+  turned out wrong; M3 built its own separate flat-state step function
+  (`lyapax.network.make_network_step_fn`) instead of adapting the vendored
+  one, which is why M4 later found `network.py` and `vendored/step.py`
+  independently reimplementing byte-for-byte identical `_euler`/`_heun`
+  helpers — see the M5 section below.
 - Tangent propagation: `(d, k)` tangent matrix `Y`, random-orthonormal
   init, updated each raw step via `jax.jacfwd(step_fn)(state) @ Y` (dense,
   as planned — matrix-free deferred to M6).
@@ -411,15 +417,55 @@ already solved.
     a reminder that a passing regression test doesn't always mean the
     code path it's named for was actually exercised.
 
-## M5 — Delayed networks (per-edge delay matrix)
+## M5 — Delayed networks (per-edge delay matrix) — ✅ done
 
-- Combine M3 + M4: multiple nodes, per-edge `tract_length`/delay, coupling
-  through the ring buffer exactly as in `vbi`'s `_read_delayed_coupling`.
-- **Definition of done:** delay → 0 limit recovers M3 results (regression
-  test, not a new external reference); a small symmetric 2-node delayed
-  network has a semi-analytically tractable characteristic equation usable
-  as an approximate independent check (see `notes/validation_systems.md`
-  Tier 4b).
+- **Scope smaller than originally sketched (verified before writing any M5
+  code):** `lyapunov_spectrum_dde` has no opinion on delay structure — it
+  differentiates through whatever carry `step_fn` produces, so it already
+  runs correctly against a genuine per-edge (heterogeneous, asymmetric)
+  `delay_steps` matrix via the untouched legacy `_read_delayed_coupling`
+  path (`coupling_fn=None`), with no new engine code — spot-checked
+  directly on an asymmetric 2-node linear network
+  (`delay_steps=[[0,10],[30,0]]`), finite output, before writing the tests
+  below. M5's real remaining work was mostly **validation**, plus one
+  cleanup (below) — not new engine architecture. The one still-genuine gap
+  (already flagged in M4, unchanged): a *custom* `coupling_fn`
+  (sigmoidal/Kuramoto-style) combined with per-edge delays needs the
+  edge-aware `coupling_fn` signature fork noted in the M4 vendored/step.py
+  bullet — linear per-edge-delayed coupling works today via the legacy path.
+- **Cleanup folded in:** `lyapax.network.make_network_step_fn` (M3,
+  zero-delay only) used to carry its own `_euler`/`_heun`, byte-for-byte
+  identical to `lyapax.vendored.make_step_fn`'s — built that way because
+  M3 predates M4's carry-based Lyapunov engine, so at the time there was
+  no way to feed a carry-based step into anything. Retired: `network.py`
+  now delegates to `vendored.make_step_fn(has_delays=False, ...)` via a
+  thin carry-to-flat adapter (for `has_delays=False` the vendored step's
+  `buf` never changes and `t` is never read, so closing over a fixed
+  placeholder `buf`/`t` and only threading `state` through
+  `lyapunov_spectrum`'s `jacfwd` is exactly equivalent to differentiating
+  the whole carry — no tangent information lost). `_euler`/`_heun` now
+  exist in exactly one place. All 5 pre-existing `test_network.py` tests
+  pass unchanged, confirming the refactor is behavior-preserving.
+- **Definition of done — met:** `tests/test_delayed_networks.py`, 2/2
+  passing (27/27 total across the whole suite):
+  - `test_per_edge_delay_near_zero_recovers_m3_eigenvalues`: the Tier 3.1
+    4-node linear network, run two ways — M3's zero-delay
+    `lyapunov_spectrum`, and M5's per-edge `delay_steps` matrix (uniform
+    value `tau_steps=1`, the smallest resolvable delay, but still routed
+    through the general per-edge machinery, not the uniform-`tau_steps`
+    shortcut) via `lyapunov_spectrum_dde`. Both match the exact
+    eigenvalues to `3e-3`, and match each other to `1e-3`.
+  - `test_two_node_symmetric_delayed_network_matches_lambert_w` (Tier 4.3):
+    a symmetric 2-node delayed linear network
+    (`x1'=gamma*x1+G*x2(t-tau)`, `x2'=gamma*x2+G*x1(t-tau)`). The
+    symmetric-mode ansatz (`x1=x2`) gives
+    `lambda_sym = gamma + W(G*tau*e^{-gamma*tau})/tau`; the antisymmetric
+    mode (`x1=-x2`) gives `lambda_antisym = gamma +
+    W(-G*tau*e^{-gamma*tau})/tau` (**note:** the sign flips inside the `W`
+    argument, not on the whole term — verified numerically before
+    committing to this formula; an earlier draft of this note had it
+    imprecisely as `gamma +/- W(...)`). Matches to `5e-3` at
+    `gamma=-1, G=0.5, tau=0.3`.
 
 ## M6 — Performance & usability
 
@@ -467,8 +513,11 @@ already solved.
 - [ ] GPU: currently unusable on the dev machine (cudnn/driver mismatch,
       see M0). Not blocking — v1 targets CPU correctness first (M1-M5); GPU
       is M6 and needs the environment fixed independently of this codebase.
-- [ ] Whether M1's Jacobian should default to `jacfwd` (dense, simple) or
-      `jvp`-per-column from the start — recommend starting dense (M1-M5) and
-      only switching to matrix-free in M6 once there's a concrete network
-      size that needs it; premature matrix-free code adds complexity before
-      it's needed.
+- [x] Whether M1's Jacobian should default to `jacfwd` (dense, simple) or
+      `jvp`-per-column from the start — went dense for M1/M3 as recommended
+      here, and that was the right call: M4 needed matrix-free `jvp`
+      propagation for real (large augmented `(state,buf)` dimension from
+      the ring buffer), built it there once there was a concrete need, and
+      it worked (`test_delayed_network_benchmark_scale`, `d_total>300`).
+      Still open for M1/M3's plain flat-state case specifically (dense
+      `jacfwd`, no concrete large-non-delayed-network need yet) — see M6.

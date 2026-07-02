@@ -33,12 +33,18 @@ a subtle bug in an earlier draft of this engine (closing over the
 ring-buffer step counter ``t`` instead of threading it through the scan
 carry -- see the comment on ``t`` below).
 
-Scope: zero-delay and *uniform*-delay (single global ``tau_steps``, not a
-per-edge delay matrix) networks, via ``lyapax.coupling``'s plain-callable
-coupling functions and ``lyapax.vendored.make_step_fn(...,
-coupling_fn=..., tau_steps=...)``. Per-edge heterogeneous delays with a
-custom coupling_fn are a separate design fork (an edge-aware coupling_fn
-signature), left for a future milestone (M5).
+Scope note: ``lyapunov_spectrum_dde`` itself has no opinion on delay
+structure -- it differentiates through whatever carry ``step_fn`` produces,
+so it already works correctly with a genuine per-edge (heterogeneous)
+delay matrix via the vendored step's legacy, hardcoded-linear coupling
+path (``coupling_fn=None``, ``delay_steps=<(n_nodes,n_nodes) matrix>``,
+verified directly against an asymmetric 2-node case). The real scope limit
+lives in ``lyapax.vendored.make_step_fn``, not here: a *custom*
+``coupling_fn`` (``lyapax.coupling``'s plain-callable style, e.g. for a
+delayed sigmoidal/Kuramoto network) is currently only wired up for
+zero-delay and *uniform*-delay (single global ``tau_steps``) branches --
+combining a custom ``coupling_fn`` with per-edge delays needs an
+edge-aware ``coupling_fn`` signature, a separate design fork left for M5.
 """
 from __future__ import annotations
 

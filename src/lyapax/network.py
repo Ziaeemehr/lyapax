@@ -2,15 +2,23 @@
 into the flat ``state -> new_state`` shape ``lyapax.core.lyapunov_spectrum``
 expects.
 
-Not the vendored ring-buffer ``step(carry, _)`` from
-``lyapax.vendored.step`` — that shape carries a delay buffer needed from
-M4 onward. For a zero-delay network the buffer is dead weight, and
-``lyapax.core`` wants a plain ``state -> new_state`` map over a flat
-vector, so this module reshapes to/from ``(n_sv, n_nodes)`` around a
-coupling + integrator step instead of routing through the carry tuple.
-M4 will need to reconcile this with the vendored ring-buffer step (most
-likely by giving that one a ``coupling_fn`` parameter too, replacing its
-hardcoded linear-only branch — tracked in notes/milestones.md).
+Built on the vendored ring-buffer step (``lyapax.vendored.make_step_fn``,
+``has_delays=False``) via a thin carry-to-flat adapter, not a second,
+independent Euler/Heun implementation. M3 originally built its own (this
+module used to have local ``_euler``/``_heun`` copies, byte-for-byte
+identical to the vendored ones) because at the time there was no way to
+feed a carry-based step into anything -- ``lyapax.core.lyapunov_spectrum``
+wants a flat ``state -> new_state`` map, and M4's carry-based Lyapunov
+engine (``lyapax.dde.lyapunov_spectrum_dde``) didn't exist yet. Unified
+here (M5 cleanup, see notes/milestones.md) now that there's a real adapter
+to write instead of a second copy of the integrators to maintain.
+
+Why this still doesn't need ``lyapax.dde``'s carry-aware tangent engine:
+for ``has_delays=False`` the vendored step's ``buf`` never changes (it's a
+structural no-op) and ``t`` is never read, so closing over a fixed
+placeholder ``buf``/``t`` and only threading ``state`` through
+``lyapunov_spectrum``'s ``jacfwd`` is exactly equivalent to differentiating
+the whole carry -- there is no delay-buffer tangent information to lose.
 """
 from __future__ import annotations
 
@@ -19,18 +27,9 @@ from typing import Callable
 import jax.numpy as jnp
 
 from .coupling import CouplingFn
+from .vendored import make_step_fn
 
 StepFlat = Callable[[jnp.ndarray], jnp.ndarray]
-
-
-def _heun(state, dfun, coupling, dt, params):
-    k1 = dfun(state, coupling, params)
-    k2 = dfun(state + dt * k1, coupling, params)
-    return state + 0.5 * dt * (k1 + k2)
-
-
-def _euler(state, dfun, coupling, dt, params):
-    return state + dt * dfun(state, coupling, params)
 
 
 def make_network_step_fn(
@@ -58,15 +57,19 @@ def make_network_step_fn(
         user-defined one.
     """
     n_nodes = weights.shape[0]
-    cvar_idx = jnp.array(cvar_indices, dtype=jnp.int32)
-    integrate = _heun if use_heun else _euler
+    n_cvar = len(cvar_indices)
+    carry_step = make_step_fn(
+        dfun=dfun, weights=weights, has_delays=False, horizon=1,
+        n_nodes=n_nodes, cvar_indices=cvar_indices, dt=dt,
+        coupling_fn=coupling_fn, use_heun=use_heun,
+    )
+    buf0 = jnp.zeros((1, n_cvar, n_nodes))
 
     def step_flat(state_flat: jnp.ndarray) -> jnp.ndarray:
         n_sv = state_flat.shape[0] // n_nodes
         state = state_flat.reshape((n_sv, n_nodes))
-        cvar_state = state[cvar_idx]
-        coupling = coupling_fn(cvar_state, weights, params)
-        new_state = integrate(state, dfun, coupling, dt, params)
+        (new_state, _new_buf, _t, _params), _ = carry_step(
+            (state, buf0, jnp.int32(0), params), None)
         return new_state.reshape(-1)
 
     return step_flat
