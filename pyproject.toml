@@ -29,6 +29,15 @@ dev = [
 examples = [
     "matplotlib>=3.7",
 ]
+# Only for reproducing notes/benchmark_report.md's cross-tool comparison
+# (benchmarks/jitcode/, benchmarks/jitcdde/) -- not needed for lyapax itself
+# or for running the test suite. ChaosTools.jl is a separate Julia install,
+# see the report's Environment table.
+benchmark = [
+    "jitcode>=1.7",
+    "jitcdde>=1.8",
+    "sympy>=1.13",  # jitcode/jitcdde's f_lyap simplify step needs it even on the compiled-C path
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -111,7 +111,10 @@ lyapax itself.
 | jitcdde | `1.8.3` | installed, not yet exercised |
 | symengine | `0.14.1` | jitcode/jitcdde's symbolic backend |
 | Julia | `1.12.1` | installed (`juliaup`) |
-| ChaosTools.jl / DynamicalSystemsBase.jl / OrdinaryDiffEq.jl / StaticArrays.jl | installed, precompiled | confirmed working (`using ChaosTools` succeeds); exact `Pkg.status()` versions TODO, not yet exercised on a benchmark system |
+| ChaosTools.jl | `3.5.4` | |
+| DynamicalSystemsBase.jl | `3.15.7` | |
+| OrdinaryDiffEq.jl | `6.105.0` | |
+| StaticArrays.jl | `1.9.18` | |
 | Machine | (dev machine, CPU) | same GPU/cudnn limitation noted in `notes/milestones.md` M0 applies here too |
 
 ## Results — Accuracy
@@ -168,11 +171,10 @@ above, first-call and steady-state columns per tool):
 
 ## Open TODOs (resume here)
 
-1. ~~Confirm Julia install finished cleanly.~~ Done this session —
+1. ~~Confirm Julia install finished cleanly.~~ Done —
    `Pkg.add(["ChaosTools", "DynamicalSystemsBase", "OrdinaryDiffEq", "StaticArrays"])`
-   completed and precompiled (93 deps, ~170s), `using ChaosTools` succeeds.
-   Still TODO: record exact package versions (`Pkg.status()`) in the
-   Environment table above.
+   completed and precompiled, `using ChaosTools` succeeds. ~~Record exact
+   package versions.~~ Done — see Environment table above.
 2. Create a `benchmarks/` directory (sibling to `examples/`, `tests/`) with
    one script per tool per system group, e.g.:
    - `benchmarks/jitcode/lorenz.py`, `benchmarks/jitcode/linear_ode.py`, `benchmarks/jitcode/network.py`
