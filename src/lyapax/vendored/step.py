@@ -87,6 +87,16 @@ def _read_delayed_coupling(
     Returns coupling (n_cvar, n_nodes), reading each source node's delayed
     coupling-variable state out of the ring buffer via a flat-index gather
     (avoids a Python loop / dynamic 2-D gather inside traced code).
+
+    Per-edge delay (delay_steps is a full (N, N) matrix): the coupling
+    formula (G*a*sum+b) is baked in here rather than exposed as a separate
+    "gather" step, because different edges read different time offsets --
+    there's no single (n_cvar, n_nodes) "the delayed cvar state" independent
+    of which edge is asking, so a plain coupling_fn(cvar_state, weights,
+    params) signature (one reading per node) can't express this in general.
+    Left untouched for M5 (per-edge delay + coupling_fn needs an edge-aware
+    signature, a separate design fork) -- see _read_uniform_delayed_cvar
+    below for the M4 case where this collapses back to one reading per node.
     """
     idx_time = (step - delay_steps) % horizon        # (N, N)
     src_idx = jnp.arange(n_nodes, dtype=jnp.int32)
@@ -99,6 +109,17 @@ def _read_delayed_coupling(
         delayed = buf_cv.reshape(-1)[flat_idx]        # (N, N)
         cvars.append(G * a * jnp.sum(weights * delayed, axis=1) + b)
     return jnp.stack(cvars)                           # (n_cvar, N)
+
+
+def _read_uniform_delayed_cvar(
+        buf: jnp.ndarray, step: int, tau_steps: int, horizon: int) -> jnp.ndarray:
+    """M4: a single global delay (not per-edge), so the delayed reading is
+    the same for every node -- one O(1) modular ring-buffer read, no
+    flat-index gather needed. Returns cvar_state (n_cvar, n_nodes), the same
+    shape lyapax.coupling's plain-callable coupling_fn expects for the
+    zero-delay case, so any existing coupling_fn works unmodified against
+    either instantaneous or uniformly-delayed cvar_state."""
+    return buf[(step - tau_steps) % horizon]
 
 
 # ---------------------------------------------------------------------------
@@ -122,16 +143,18 @@ def _heun(state, dfun, coupling, dt, params):
 def make_step_fn(
         dfun: Callable,
         weights: jnp.ndarray,
-        delay_steps: jnp.ndarray,
         has_delays: bool,
         horizon: int,
         n_nodes: int,
         cvar_indices: tuple[int, ...],
         dt: float,
-        G_default: float,
-        coup_a: float,
-        coup_b: float,
+        delay_steps: jnp.ndarray | None = None,
+        G_default: float = 1.0,
+        coup_a: float = 1.0,
+        coup_b: float = 0.0,
         use_heun: bool = True,
+        coupling_fn: Callable | None = None,
+        tau_steps: int | None = None,
 ) -> Callable:
     """
     Returns step(carry, _) -> (new_carry, new_state).
@@ -144,18 +167,45 @@ def make_step_fn(
 
     ``buf`` is a no-op array when ``has_delays=False`` — the ODE and DDE
     cases share this exact function; only the coupling branch differs.
+
+    coupling_fn : optional ``lyapax.coupling``-style plain callable,
+        ``(cvar_state, weights, params) -> coupling`` (see
+        ``lyapax.coupling.CouplingFn``). When given, replaces the
+        hardcoded ``G_default``/``coup_a``/``coup_b`` linear formula for
+        *both* the zero-delay and (uniform-delay-only, see ``tau_steps``)
+        delayed branches, unifying this step with M3's coupling design
+        (notes/milestones.md, M4). ``G_default``/``coup_a``/``coup_b`` are
+        ignored when ``coupling_fn`` is given. Default ``None`` preserves
+        the exact original (pre-M4) behavior.
+    tau_steps : required alongside ``coupling_fn`` when ``has_delays=True``
+        -- a single global delay (in steps), read via
+        ``_read_uniform_delayed_cvar`` (O(1) ring-buffer read). Per-edge
+        heterogeneous delays (the general ``delay_steps`` matrix) are not
+        supported together with a custom ``coupling_fn`` yet -- that
+        combination needs an edge-aware coupling_fn signature, left for a
+        future milestone (M5); use the legacy ``coupling_fn=None`` path
+        (which does support per-edge ``delay_steps``, just with the
+        hardcoded linear formula) until then.
     """
     cvar_idx = jnp.array(list(cvar_indices), dtype=jnp.int32)
     integrate = _heun if use_heun else _euler
 
-    def _coupling(buf, step, state, params):
-        G = params.get("G", G_default)
-        if has_delays:
-            return _read_delayed_coupling(
-                buf, step, delay_steps, weights, G, coup_a, coup_b,
-                horizon, n_nodes)
-        cvar_state = state[cvar_idx]
-        return _instant_coupling(cvar_state, weights, G, coup_a, coup_b)
+    if coupling_fn is not None:
+        def _coupling(buf, step, state, params):
+            if has_delays:
+                cvar_state = _read_uniform_delayed_cvar(buf, step, tau_steps, horizon)
+            else:
+                cvar_state = state[cvar_idx]
+            return coupling_fn(cvar_state, weights, params)
+    else:
+        def _coupling(buf, step, state, params):
+            G = params.get("G", G_default)
+            if has_delays:
+                return _read_delayed_coupling(
+                    buf, step, delay_steps, weights, G, coup_a, coup_b,
+                    horizon, n_nodes)
+            cvar_state = state[cvar_idx]
+            return _instant_coupling(cvar_state, weights, G, coup_a, coup_b)
 
     def step(carry, _):
         state, buf, t, params = carry

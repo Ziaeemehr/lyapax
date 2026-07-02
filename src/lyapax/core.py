@@ -37,6 +37,30 @@ class LyapunovResult(NamedTuple):
     ``history``, measured from the end of the transient."""
 
 
+def _run_renorm_scan(renorm_block, carry0, n_renorm: int, renorm_every: int, dt: float) -> LyapunovResult:
+    """Shared tail between ``lyapunov_spectrum`` (ODE) and
+    ``lyapax.dde.lyapunov_spectrum_dde``: scan ``renorm_block`` (which must
+    return ``(new_carry, log_growth (k,))`` per call, log-growth already
+    ``log|diag(R)|`` from one QR-renormalization block) ``n_renorm`` times,
+    then turn the per-block log-growth into cumulative running exponent
+    estimates. Not part of the public API -- the only thing that differs
+    between the ODE and DDE engines is what one renorm block's tangent
+    propagation looks like, not this bookkeeping.
+    """
+    _final_carry, log_growth_per_block = jax.lax.scan(
+        renorm_block, carry0, None, length=n_renorm)
+
+    cum_log_growth = jnp.cumsum(log_growth_per_block, axis=0)  # (n_renorm, k)
+    block_times = (jnp.arange(1, n_renorm + 1) * renorm_every) * dt
+    history = cum_log_growth / block_times[:, None]
+
+    order = jnp.argsort(-history[-1])
+    history = history[:, order]
+    exponents = history[-1]
+
+    return LyapunovResult(exponents=exponents, history=history, times=block_times)
+
+
 def lyapunov_spectrum(
         step_fn: StepFn,
         state0: jnp.ndarray,
@@ -129,23 +153,11 @@ def lyapunov_spectrum(
         (state0, Y0), _ = jax.lax.scan(
             _transient_block, (state0, Y0), None, length=n_transient // renorm_every)
 
-    n_renorm = n_steps // renorm_every
-
     def _renorm_block(carry, _):
         state, Y = carry
         state, Q, R = _advance(state, Y, renorm_every)
         log_growth = jnp.log(jnp.abs(jnp.diag(R)))
         return (state, Q), log_growth
 
-    (_final_state, _final_Y), log_growth_per_block = jax.lax.scan(
-        _renorm_block, (state0, Y0), None, length=n_renorm)
-
-    cum_log_growth = jnp.cumsum(log_growth_per_block, axis=0)  # (n_renorm, k)
-    block_times = (jnp.arange(1, n_renorm + 1) * renorm_every) * dt
-    history = cum_log_growth / block_times[:, None]
-
-    order = jnp.argsort(-history[-1])
-    history = history[:, order]
-    exponents = history[-1]
-
-    return LyapunovResult(exponents=exponents, history=history, times=block_times)
+    n_renorm = n_steps // renorm_every
+    return _run_renorm_scan(_renorm_block, (state0, Y0), n_renorm, renorm_every, dt)

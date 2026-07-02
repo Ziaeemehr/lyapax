@@ -6,6 +6,14 @@ uncoupled textbook systems, so routing them through the string-expression
 codegen built for networked models would only add indirection. Each entry
 here corresponds to a tier in notes/validation_systems.md; see that doc for
 the reference Lyapunov values and citations.
+
+Tier 4 (DDE) benchmarks are *not* here: they're expressed as 1-node
+self-loop ``ModelSpec``/coupling networks instead (a node "coupled to its
+own delayed history"), since ``lyapax.dde.lyapunov_spectrum_dde`` operates
+on the vendored ring-buffer step, which needs that machinery — see
+``tests/test_dde.py`` for the benchmark builders, mirroring how
+``tests/test_network.py`` builds its ``ModelSpec`` helpers locally rather
+than in this module.
 """
 from __future__ import annotations
 

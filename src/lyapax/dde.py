@@ -1,0 +1,220 @@
+"""Fixed-delay DDE Lyapunov engine, on top of the vendored ring buffer (M4).
+
+Reuses the vendored ring-buffer simulator (``lyapax.vendored.step``) as-is
+rather than a second, parallel history mechanism: the genuinely missing
+piece was never "how do we store delayed history" (the vendored
+``_write_ring``/``_read_delayed_coupling`` already do that correctly), it
+was that ``lyapax.core.lyapunov_spectrum`` only differentiates a flat
+``state``, not the ``(state, buf)`` carry a DDE actually needs -- a
+sensitivity to the delayed value (``d f/d x(t-tau)``) is just as real as
+the sensitivity to the current value, and dropping it silently gives wrong
+exponents, not merely imprecise ones.
+
+Method, following Farmer's (1982) approach to DDE Lyapunov spectra (the
+same method the established ``jitcdde_lyap`` package implements for
+adaptive-step DDEs via Hermite-interpolated history): augment the system
+with explicit tangent dynamics for both ``state`` and ``buf``, propagate
+them alongside the primal trajectory, periodically re-orthonormalize via
+QR. Where this differs from ``jitcdde_lyap``: our scope is fixed-step with
+an integer-step delay, so a delayed value always lands exactly on a stored
+grid point -- no interpolation needed, so a plain finite-size ring buffer
+suffices and the tangent state is already finite-dimensional (a plain
+``jnp.linalg.qr``, not jitcdde's continuous-function inner product over a
+Hermite interpolant).
+
+Tangent propagation is ``jax.jvp``-based, not ``jax.jacfwd``-based like
+``lyapax.core``: cost is O(k) forward passes per raw step (k = tracked
+exponents), not O(d_total) for the full augmented ``(state, buf)``
+dimension -- the earlier M4 attempt (state-augmentation fed through a
+dense jacfwd) didn't scale to real coupled networks, since d_total grows
+with both network size and ring-buffer depth. See notes/milestones.md
+(M4) for the full design discussion and a design-review pass that caught
+a subtle bug in an earlier draft of this engine (closing over the
+ring-buffer step counter ``t`` instead of threading it through the scan
+carry -- see the comment on ``t`` below).
+
+Scope: zero-delay and *uniform*-delay (single global ``tau_steps``, not a
+per-edge delay matrix) networks, via ``lyapax.coupling``'s plain-callable
+coupling functions and ``lyapax.vendored.make_step_fn(...,
+coupling_fn=..., tau_steps=...)``. Per-edge heterogeneous delays with a
+custom coupling_fn are a separate design fork (an edge-aware coupling_fn
+signature), left for a future milestone (M5).
+"""
+from __future__ import annotations
+
+from typing import Callable
+
+import jax
+import jax.numpy as jnp
+
+from .core import LyapunovResult, _run_renorm_scan
+
+CarryStepFn = Callable
+"""step(carry, _) -> (new_carry, new_state), carry = (state, buf, t, params)
+-- exactly what lyapax.vendored.make_step_fn(...) returns."""
+
+
+def resolve_tau_steps(tau: float, dt: float) -> int:
+    """Round a physical delay ``tau`` to an integer number of ``dt`` steps.
+
+    Integer-step only, no sub-step interpolation -- see risk #4 in
+    notes/milestones.md for the accuracy tradeoff this implies (characterize
+    it with a convergence-vs-dt test at fixed physical ``tau``).
+    """
+    return max(1, round(tau / dt))
+
+
+def constant_history_buf0(cvar_state0: jnp.ndarray, horizon: int) -> jnp.ndarray:
+    """Initial ring buffer under the constant-history DDE convention: the
+    coupling-variable state is assumed equal to ``cvar_state0`` for all
+    ``t <= 0``.
+
+    cvar_state0 : (n_cvar, n_nodes) coupling-variable state at t=0.
+    Returns : (horizon, n_cvar, n_nodes) buf0, ready for
+        ``carry0 = (state0, buf0, jnp.int32(0), params)``.
+    """
+    cvar_state0 = jnp.asarray(cvar_state0)
+    return jnp.tile(cvar_state0[None, :, :], (horizon, 1, 1))
+
+
+def lyapunov_spectrum_dde(
+        step_fn: CarryStepFn,
+        state0: jnp.ndarray,
+        buf0: jnp.ndarray,
+        params: dict,
+        dt: float,
+        n_steps: int,
+        k: int | None = None,
+        renorm_every: int = 1,
+        t_transient: float = 0.0,
+        seed: int = 0,
+) -> LyapunovResult:
+    """
+    Compute the (partial or full) Lyapunov spectrum of a fixed-delay DDE
+    given as a vendored-style carry step function, via the Benettin/QR
+    method generalized to a ``(state, buf)`` tangent pair (see module
+    docstring).
+
+    Parameters
+    ----------
+    step_fn : ``step(carry, _) -> (new_carry, new_state)``, carry =
+        ``(state, buf, t, params)`` -- from
+        ``lyapax.vendored.make_step_fn(..., coupling_fn=..., tau_steps=...)``.
+    state0 : (n_sv, n_nodes) initial state (pre-transient).
+    buf0 : (horizon, n_cvar, n_nodes) initial ring buffer (see
+        ``constant_history_buf0``).
+    params : closed over for tangent propagation (not differentiated --
+        only ``state``/``buf`` are).
+    dt, n_steps, k, renorm_every, seed : see ``lyapax.core.lyapunov_spectrum``
+        (same meaning).
+    t_transient : time to integrate (discarding tangent tracking) before
+        starting the Lyapunov accumulation. Internally rounded up to cover
+        at least one full ring cycle (``horizon * dt``): until every buffer
+        slot has been written at least once from real dynamics, delayed-
+        direction tangent information is incomplete, and (for large
+        ``horizon``) a random initial tangent basis is disproportionately
+        concentrated in the buffer's trivial "just shifted forward
+        unchanged" directions -- the same class of silent-bias risk M1's
+        transient fix addresses for the plain ODE case, amplified here.
+
+    Returns
+    -------
+    LyapunovResult
+    """
+    state0 = jnp.asarray(state0)
+    buf0 = jnp.asarray(buf0)
+    horizon = buf0.shape[0]
+    state_shape = state0.shape
+    buf_shape = buf0.shape
+    d_state = state0.size
+    d_buf = buf0.size
+    d_total = d_state + d_buf
+
+    if k is None:
+        k = d_total
+    if not (1 <= k <= d_total):
+        raise ValueError(f"k must be in [1, {d_total}]; got {k}.")
+    if n_steps <= 0:
+        raise ValueError(f"n_steps must be > 0; got {n_steps}.")
+    if n_steps % renorm_every != 0:
+        raise ValueError(
+            f"n_steps ({n_steps}) must be a multiple of renorm_every "
+            f"({renorm_every})."
+        )
+
+    key = jax.random.PRNGKey(seed)
+    Y0_flat, _ = jnp.linalg.qr(jax.random.normal(key, (d_total, k), dtype=state0.dtype))
+    Y_state0 = Y0_flat[:d_state].reshape(state_shape + (k,))
+    Y_buf0 = Y0_flat[d_state:].reshape(buf_shape + (k,))
+
+    def _flatten(Y_state, Y_buf):
+        return jnp.concatenate(
+            [Y_state.reshape(d_state, k), Y_buf.reshape(d_buf, k)], axis=0)
+
+    def _unflatten(Y_flat):
+        return (Y_flat[:d_state].reshape(state_shape + (k,)),
+                Y_flat[d_state:].reshape(buf_shape + (k,)))
+
+    def _advance(state, buf, t, Y_state, Y_buf, n_substeps):
+        """Propagate (state, buf) and their tangent pair jointly for
+        n_substeps raw steps, then QR once -- t lives in the scanned carry
+        and is re-read/incremented every raw step (not closed over once per
+        block): closing over a stale t was verified to silently diverge
+        from the correct answer during design review (no crash/NaN, just a
+        wrong number), since t drives the ring-buffer's modular read/write
+        indices and must match what step_fn itself sees at each raw step."""
+        def _raw_step(carry_inner, _):
+            state_i, buf_i, t_i, Y_state_i, Y_buf_i = carry_inner
+
+            def f(state, buf):
+                (new_state, new_buf, _t2, _params2), _ = step_fn(
+                    (state, buf, t_i, params), None)
+                return new_state, new_buf
+
+            def _single_column(Y_state_col, Y_buf_col):
+                return jax.jvp(f, (state_i, buf_i), (Y_state_col, Y_buf_col))
+
+            (new_state_rep, new_buf_rep), (dY_state, dY_buf) = jax.vmap(
+                _single_column, in_axes=(-1, -1), out_axes=((0, 0), (-1, -1))
+            )(Y_state_i, Y_buf_i)
+            new_state, new_buf = new_state_rep[0], new_buf_rep[0]
+
+            return (new_state, new_buf, t_i + 1, dY_state, dY_buf), None
+
+        (state, buf, t, Y_state, Y_buf), _ = jax.lax.scan(
+            _raw_step, (state, buf, t, Y_state, Y_buf), None, length=n_substeps)
+
+        Q_flat, R = jnp.linalg.qr(_flatten(Y_state, Y_buf))
+        Q_state, Q_buf = _unflatten(Q_flat)
+        return state, buf, t, Q_state, Q_buf, R
+
+    t0 = jnp.int32(0)
+
+    if t_transient > 0.0:
+        # Floor: at least one full ring cycle, same cadence as the main run
+        # (mirrors core.py's transient chunking, plus the DDE-specific
+        # ring-cycle floor from the module docstring).
+        min_transient = horizon * dt
+        n_transient = renorm_every * max(
+            1, round(max(t_transient, min_transient) / dt / renorm_every))
+
+        def _transient_block(carry, _):
+            state, buf, t, Y_state, Y_buf = carry
+            state, buf, t, Y_state, Y_buf, _R = _advance(
+                state, buf, t, Y_state, Y_buf, renorm_every)
+            return (state, buf, t, Y_state, Y_buf), None
+
+        (state0, buf0, t0, Y_state0, Y_buf0), _ = jax.lax.scan(
+            _transient_block, (state0, buf0, t0, Y_state0, Y_buf0), None,
+            length=n_transient // renorm_every)
+
+    def _renorm_block(carry, _):
+        state, buf, t, Y_state, Y_buf = carry
+        state, buf, t, Y_state, Y_buf, R = _advance(
+            state, buf, t, Y_state, Y_buf, renorm_every)
+        log_growth = jnp.log(jnp.abs(jnp.diag(R)))
+        return (state, buf, t, Y_state, Y_buf), log_growth
+
+    n_renorm = n_steps // renorm_every
+    return _run_renorm_scan(
+        _renorm_block, (state0, buf0, t0, Y_state0, Y_buf0), n_renorm, renorm_every, dt)

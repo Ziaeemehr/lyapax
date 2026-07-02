@@ -259,25 +259,121 @@ already solved.
     must be exactly `0` (`atol=1e-8`, no literature value needed at all);
     plus a finite-output smoke test at `G>0`.
 
-## M4 — DDE support (fixed delay, fixed step)
+## M4 — DDE support (fixed delay, fixed step) — ✅ done
 
-- Reintroduce the ring buffer into the state carried through `lax.scan`.
-  Tangent state becomes `(Y_state, Y_buf)`; propagate via `jax.jvp` on the
-  *whole* `step(carry, _)` (state **and** buffer), not `jacfwd` on state
-  alone — this is the point where the "just differentiate the existing
-  simulator" trick pays off instead of deriving `∂f/∂x(t)` and
-  `∂f/∂x(t-τ)` by hand.
-- QR-renormalize the stacked `(state, buffer-slice-in-play)` tangent
-  vectors; only the delay-relevant slice of the buffer needs to be tracked,
-  not the full ring.
-- **Definition of done:** Tier 4 — Mackey-Glass equation reproduces a
-  positive largest exponent in the range reported by Farmer (1982) and
-  later replications (see `notes/validation_systems.md` for the tolerance
-  band — DDE LE literature values are not as tightly reproducible
-  digit-for-digit as ODE ones, so the acceptance bar is sign + order of
-  magnitude + qualitative spectrum shape, not 4-digit matching).
-- Convergence-vs-`dt` test for a fixed physical `tau`, to characterize the
-  integer-step delay rounding error from risk #4 above.
+- **Two design passes this session; this section describes the final one.**
+  The first pass (superseded, no longer in the codebase) used state
+  augmentation — folding a sliding history window into a flat `state` fed
+  through the unmodified M1 dense-`jacfwd` engine. It worked but built a
+  second, parallel DDE mechanism instead of reusing the already-correct,
+  already-tested vendored ring buffer (`lyapax.vendored.step`), and its
+  dense tangent propagation (O(horizon²) per step) doesn't scale to real
+  coupled delayed networks, which is the actual target use case (raised in
+  review: "the whole story was to be able to work on large systems of
+  coupled equations"). Replaced with the design below, which reuses the
+  vendored ring buffer as the single simulator and adds only the piece
+  that was genuinely missing — a tangent-propagation engine that
+  differentiates through the whole `(state, buf)` carry, not `state` alone
+  (differentiating `state` only, as the first pass effectively did by
+  construction, silently drops the `∂f/∂x(t-τ)` sensitivity term — a
+  correctness bug, not an approximation).
+- **Precedent check:** this matches how the established `jitcdde_lyap`
+  package computes DDE Lyapunov exponents (Farmer 1982's method — augment
+  the system with explicit tangent dynamics, propagate alongside the
+  primal, periodically renormalize). It stores history as Hermite-
+  interpolation anchors (needed because it targets general *adaptive*-step
+  DDEs); our scope is fixed-step with an integer-step delay, so the
+  delayed value always lands exactly on a stored grid point, making a
+  finite-size ring buffer the correct, simpler specialization — and the
+  tangent space is already finite-dimensional, so a plain `jnp.linalg.qr`
+  suffices where jitcdde needs a continuous-function inner product.
+- **`src/lyapax/vendored/step.py`** (additive, backward-compatible —
+  `tests/test_setup.py`'s two call sites use only keyword args, so the
+  original `G_default`/`coup_a`/`coup_b`/`delay_steps`-based behavior is
+  byte-for-byte unchanged when the new params are omitted; see
+  `vendored/NOTICE.md` for the deviation writeup): `make_step_fn` gained
+  `coupling_fn` (a `lyapax.coupling`-style plain callable, replacing the
+  hardcoded linear formula) and `tau_steps` (a single global delay). A new
+  `_read_uniform_delayed_cvar` (O(1) modular ring-buffer read) handles the
+  delayed branch when `coupling_fn` is given; the original per-edge
+  `_read_delayed_coupling` is untouched, still used when `coupling_fn` is
+  `None`. **Scope limit:** per-edge heterogeneous delays together with a
+  custom `coupling_fn` aren't supported yet — `_read_delayed_coupling`
+  bakes the coupling formula into the per-edge gather inline (different
+  edges read different time offsets, so there's no single per-node
+  "delayed cvar_state" to hand a plain `coupling_fn`); that needs an
+  edge-aware `coupling_fn` signature, a real design fork left for M5.
+- **`src/lyapax/dde.py`** (rewritten): `lyapunov_spectrum_dde(step_fn,
+  state0, buf0, params, dt, n_steps, k=None, renorm_every=1,
+  t_transient=0.0, seed=0) -> LyapunovResult`, operating on
+  `lyapax.vendored.make_step_fn(..., coupling_fn=..., tau_steps=...)`'s
+  carry-based step. Tangent state `(Y_state, Y_buf)` mirrors the primal
+  carry's shapes plus a trailing `k` axis; per raw step, all `k` tangent
+  columns propagate via one `jax.vmap`-batched `jax.jvp` call — O(k)
+  forward passes per step, not O(d_total) for the full augmented
+  dimension, which is the actual fix for the scaling problem the first
+  pass had. Every `renorm_every` steps, flatten+stack `(Y_state, Y_buf)`,
+  `jnp.linalg.qr`, accumulate `log|diag(R)|`, split `Q` back. Also
+  `resolve_tau_steps`/`constant_history_buf0` helpers. Two subtleties
+  caught by an independent design-review pass before implementation (both
+  silent-wrong-answer classes of bug, no crash/NaN):
+  - The ring-buffer step counter `t` **must live in the scanned carry and
+    be re-read every raw step**, not closed over once per
+    `renorm_every`-block — verified directly that closing over a stale `t`
+    diverges from the correct answer with no error raised.
+  - The transient must cover **at least one full ring cycle**
+    (`horizon * dt`) — until every buffer slot has been written at least
+    once from real dynamics, delayed-direction tangent information is
+    incomplete, and a random initial tangent basis is disproportionately
+    concentrated in the buffer's trivial shift-register directions.
+    `lyapunov_spectrum_dde` enforces this as an internal floor
+    (`max(t_transient, horizon*dt)`), so a too-short user-supplied
+    `t_transient` degrades gracefully rather than silently biasing the
+    result (`test_transient_floor_prevents_bias_from_short_user_transient`).
+  - The whole ring buffer's tangent is tracked (not a "delay-relevant
+    slice"): for the per-edge-delay case this extends to later, any slot
+    can become delay-relevant to some node at some future step, so no
+    fixed subset is safe to drop. (For today's uniform-delay case this is
+    also simply the correct, simplest choice.)
+  - The shared "renorm block → history/exponents" tail (previously
+    duplicated near-verbatim from `core.py`) is factored into
+    `core._run_renorm_scan`, used by both engines.
+- The two Tier-4 benchmarks are expressed as 1-node self-loop
+  `ModelSpec`/coupling networks (`weights=[[1.0]]`, `linear_coupling`) —
+  "coupled to your own delayed history" — living in `tests/test_dde.py`
+  (mirroring `test_network.py`'s locally-defined `ModelSpec` helpers), not
+  in `src/lyapax/systems.py`, since they now need the ModelSpec/coupling
+  machinery that module deliberately avoids.
+- **Definition of done — met:** `tests/test_dde.py`, 7/7 passing (25/25
+  total across the whole suite, ~22s):
+  - Tier 4.2: linear scalar DDE (`a=0.5, tau=0.3`) — dominant exponent
+    within `0.01` of the Lambert W root (`lambda = W(-a*tau)/tau`).
+  - `dt`-convergence (same physical `tau`, `dt` in `{2e-2, 1e-2}`) and
+    small-delay-recovers-ODE-decay regression, both as in the first pass.
+  - `test_transient_floor_prevents_bias_from_short_user_transient` and
+    `test_tangent_propagation_matches_dense_jacfwd` (new): the latter
+    directly validates the `jvp`/`vmap` tangent-propagation mechanism
+    against dense `jax.jacfwd` on a small case, independent of any
+    downstream statistical convergence — agreement to `1e-10`, i.e.
+    machine precision. Addresses the earlier gap where only final LE
+    *values*, never the Jacobian mechanism itself, were validated.
+  - Tier 4.1: Mackey-Glass (`beta=0.2, gamma=0.1, n=10, tau=17, dt=1.0`,
+    `k=8` — not the full `d_total=18` spectrum, since the most contracting
+    directions underflow `log|diag(R)|` before they're needed, the same
+    numerical-sensitivity `jitcdde`'s docs flag for deep negative
+    exponents) — `lambda1` in `(0.0005, 0.05)` (observed `~0.002-0.0024`),
+    `|lambda2| < 0.01` (observed `~1e-4`), remaining spectrum negative,
+    Kaplan-Yorke dimension in `(1.5, 3.5)` (observed `~2.06`, matching the
+    literature's `2-3` range). Robust across PRNG seed and initial
+    condition.
+  - `test_delayed_network_benchmark_scale` (new): a 10-node delayed
+    Kuramoto network, `d_total > 300` (deliberately beyond what dense
+    `jacfwd` handles practically per step) — finite output, `k=5`,
+    completes in ~2s locally (30s CI ceiling). The concrete demonstration
+    that this redesign actually scales to coupled networks, which the
+    first pass could not.
+- `scipy` added to the `dev` extra in `pyproject.toml` (for
+  `scipy.special.lambertw` in the Tier 4.2 test).
 
 ## M5 — Delayed networks (per-edge delay matrix)
 

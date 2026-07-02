@@ -35,6 +35,17 @@ Changes made relative to the originals, per the decision recorded in
   add a new coupling without patching `vbi`'s source. `lyapax.coupling`
   instead makes coupling a plain callable — see that module and the M3
   note in `notes/milestones.md`.
+- `step.py`'s `make_step_fn` gained two additive, optional parameters not
+  present in the `vbi` original: `coupling_fn` and `tau_steps` (M4,
+  `notes/milestones.md`). When `coupling_fn` is given, it replaces the
+  hardcoded linear coupling formula for the zero-delay branch and for a
+  *uniform*-delay branch (a new `_read_uniform_delayed_cvar` O(1)
+  ring-buffer read, added alongside the original per-edge
+  `_read_delayed_coupling`, which is untouched and still used whenever
+  `coupling_fn` is not given), letting `lyapax.coupling`'s plain-callable
+  coupling functions run against delayed as well as instantaneous coupling
+  state. Default `coupling_fn=None` preserves the exact original behavior
+  byte-for-byte — existing callers are unaffected.
 - Everything else (dfun codegen via `exec()`, the ring-buffer delayed
   coupling with a flat-index gather, the `step(carry, _)` shape used with
   `lax.scan`) is functionally the same as the `vbi` originals.
