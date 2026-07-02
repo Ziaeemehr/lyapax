@@ -10,9 +10,9 @@ import jax.numpy as jnp
 import numpy as np
 
 from lyapax.core import lyapunov_spectrum
-from lyapax.coupling import linear_coupling, sigmoidal_coupling, kuramoto_coupling
+from lyapax.coupling import kuramoto_coupling, linear_coupling, sigmoidal_coupling
 from lyapax.network import make_network_step_fn
-from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
+from lyapax.simulator import ModelSpec, Parameter, StateVar, build_jax_dfun
 
 
 def _linear_node_model(gamma: float) -> ModelSpec:

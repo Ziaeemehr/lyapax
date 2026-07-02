@@ -15,7 +15,7 @@ import numpy as np
 from lyapax.core import lyapunov_spectrum
 from lyapax.coupling import kuramoto_coupling, linear_coupling
 from lyapax.network import make_network_step_fn, make_parametrized_network_step_fn
-from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
+from lyapax.simulator import ModelSpec, Parameter, StateVar, build_jax_dfun
 from lyapax.sweep import sweep_lyapunov_spectrum
 
 

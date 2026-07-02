@@ -21,17 +21,17 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.skipif(
-    jax.default_backend() != "gpu",
-    reason="GPU not selected -- run with JAX_PLATFORMS=cuda to opt in",
-)
-
+from lyapax import systems
 from lyapax.core import lyapunov_spectrum
 from lyapax.coupling import kuramoto_coupling
 from lyapax.integrators import rk4_step
 from lyapax.network import make_network_step_fn
-from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
-from lyapax import systems
+from lyapax.simulator import ModelSpec, Parameter, StateVar, build_jax_dfun
+
+pytestmark = pytest.mark.skipif(
+    jax.default_backend() != "gpu",
+    reason="GPU not selected -- run with JAX_PLATFORMS=cuda to opt in",
+)
 
 
 def test_lorenz_lambda1_matches_published_value_on_gpu():

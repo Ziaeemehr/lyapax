@@ -75,7 +75,9 @@ class LyapunovResult(NamedTuple):
     ``history``, measured from the end of the transient."""
 
 
-def _run_renorm_scan(renorm_block, carry0, n_renorm: int, renorm_every: int, dt: float) -> LyapunovResult:
+def _run_renorm_scan(
+        renorm_block, carry0, n_renorm: int, renorm_every: int, dt: float,
+) -> LyapunovResult:
     """Shared tail between ``lyapunov_spectrum`` (ODE) and
     ``lyapax.dde.lyapunov_spectrum_dde``: scan ``renorm_block`` (which must
     return ``(new_carry, log_growth (k,))`` per call, log-growth already

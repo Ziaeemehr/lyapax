@@ -9,15 +9,22 @@ path) just works -- see notes/milestones.md (M5) for how this was verified
 before writing any new code. These tests are the validation that
 verification implied, not proof of new machinery.
 """
-import numpy as np
 import jax.numpy as jnp
+import numpy as np
 from scipy.special import lambertw
 
 from lyapax.core import lyapunov_spectrum
-from lyapax.dde import lyapunov_spectrum_dde, constant_history_buf0, resolve_tau_steps
-from lyapax.network import make_network_step_fn
 from lyapax.coupling import linear_coupling
-from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun, make_step_fn, Connectivity
+from lyapax.dde import constant_history_buf0, lyapunov_spectrum_dde
+from lyapax.network import make_network_step_fn
+from lyapax.simulator import (
+    Connectivity,
+    ModelSpec,
+    Parameter,
+    StateVar,
+    build_jax_dfun,
+    make_step_fn,
+)
 
 
 def _linear_node_model(gamma: float) -> ModelSpec:
@@ -99,7 +106,6 @@ def test_two_node_symmetric_delayed_network_matches_lambert_w():
     model = _linear_node_model(gamma)
     dfun = build_jax_dfun(model)
     weights = jnp.array([[0., 1.], [1., 0.]])
-    tau_steps = resolve_tau_steps(tau, dt)
     conn = Connectivity(
         weights=np.array([[0., 1.], [1., 0.]]),
         tract_lengths=np.array([[0., tau], [tau, 0.]]), speed=1.0)

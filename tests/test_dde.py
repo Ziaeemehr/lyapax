@@ -22,14 +22,16 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.special import lambertw
 
-from lyapax.dde import (
-    lyapunov_spectrum_dde, resolve_tau_steps, constant_history_buf0,
-    make_scalar_delayed_step_fn, scalar_delayed_history0,
-)
-from lyapax.coupling import kuramoto_coupling
-from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun, make_step_fn
 from lyapax import systems
-
+from lyapax.coupling import kuramoto_coupling
+from lyapax.dde import (
+    constant_history_buf0,
+    lyapunov_spectrum_dde,
+    make_scalar_delayed_step_fn,
+    resolve_tau_steps,
+    scalar_delayed_history0,
+)
+from lyapax.simulator import ModelSpec, Parameter, StateVar, build_jax_dfun, make_step_fn
 
 # ---------------------------------------------------------------------------
 # Tier 4.2 -- linear scalar DDE, dominant exponent vs Lambert W root
@@ -128,7 +130,6 @@ def test_tangent_propagation_matches_dense_jacfwd():
     an ad hoc reference computed inline, so we don't reintroduce a second
     public DDE mechanism just to test the first one."""
     a, dt, tau_steps = 0.7, 0.05, 4
-    horizon = tau_steps + 1
     rhs = systems.linear_scalar_dde(a=a)
     step_fn = make_scalar_delayed_step_fn(rhs, m=1, tau_steps=tau_steps, dt=dt)
 

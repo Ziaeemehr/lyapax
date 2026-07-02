@@ -8,11 +8,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from lyapax import systems
 from lyapax.core import lyapunov_spectrum
 from lyapax.integrators import rk4_step
-from lyapax import systems
 from lyapax.utils import simulate_trajectory
-
 
 # ---------------------------------------------------------------------------
 # Tier 0.1 -- linear ODE, exact eigenvalues

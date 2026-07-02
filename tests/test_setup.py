@@ -8,8 +8,12 @@ import jax.numpy as jnp
 import numpy as np
 
 from lyapax.simulator import (
-    ModelSpec, StateVar, Parameter, Connectivity,
-    build_jax_dfun, make_step_fn,
+    Connectivity,
+    ModelSpec,
+    Parameter,
+    StateVar,
+    build_jax_dfun,
+    make_step_fn,
 )
 
 
