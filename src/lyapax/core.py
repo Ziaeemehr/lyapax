@@ -25,6 +25,7 @@ how many are actually tracked).
 """
 from __future__ import annotations
 
+import warnings
 from typing import Callable, NamedTuple
 
 import jax
@@ -33,13 +34,41 @@ import jax.numpy as jnp
 StepFn = Callable[[jnp.ndarray], jnp.ndarray]
 
 
+def _warn_if_not_x64(state0: jnp.ndarray) -> None:
+    """Lyapunov exponents are long-horizon averages of log-growth rates;
+    JAX's default float32 silently degrades them (see notes/milestones.md,
+    risk #1). Warn once per call site rather than raising, since a caller
+    computing genuinely short/coarse estimates may accept the precision
+    loss -- but the default (x64 disabled) is very rarely what a caller
+    actually wants here.
+    """
+    if not jax.config.jax_enable_x64 and jnp.asarray(state0).dtype in (
+            jnp.float32, jnp.complex64):
+        warnings.warn(
+            "lyapax: jax_enable_x64 is not set, so state0 is float32 -- "
+            "Lyapunov exponent estimates accumulate log-growth over many "
+            "steps and are known to degrade under float32 (see "
+            "notes/milestones.md, risk #1). Call "
+            "`jax.config.update('jax_enable_x64', True)` before importing "
+            "jax.numpy arrays, or pass a float64 state0 once x64 is "
+            "enabled.",
+            stacklevel=3,
+        )
+
+
 class LyapunovResult(NamedTuple):
     exponents: jnp.ndarray
     """(k,) final Lyapunov-exponent estimates, sorted descending."""
 
     history: jnp.ndarray
     """(n_renorm, k) running estimate at each renormalization point, in the
-    same column order as ``exponents`` — use to check convergence."""
+    same column order as ``exponents`` — use to check convergence.
+
+    Columns are ordered once, by the *final* row (``history[-1]`` ==
+    ``exponents``), then that column order is applied to every row. Near-
+    degenerate exponents can cross over during the run, so an early row's
+    per-column values are not guaranteed to be individually sorted or to
+    track the same Oseledets direction throughout — only the last row is."""
 
     times: jnp.ndarray
     """(n_renorm,) elapsed time (in units of ``dt``) at each row of
@@ -70,6 +99,24 @@ def _run_renorm_scan(renorm_block, carry0, n_renorm: int, renorm_every: int, dt:
     return LyapunovResult(exponents=exponents, history=history, times=block_times)
 
 
+def _check_finite(result: LyapunovResult) -> None:
+    """Raise if any running estimate is non-finite (``check_finite=True``).
+
+    Only meaningful for eager (non-``jit``-wrapped) calls: it forces
+    ``result.history`` to a concrete value, which fails under tracing.
+    """
+    if not bool(jnp.all(jnp.isfinite(result.history))):
+        raise FloatingPointError(
+            "non-finite Lyapunov exponent estimate encountered -- a QR "
+            "diagonal entry underflowed/overflowed (log(R_ii) was 0, inf, "
+            "or NaN), most likely from renorm_every being too large for "
+            "this system's growth rate, or a diverging/NaN-producing "
+            "step_fn. See renorm_every's docstring for the tangent-"
+            "overflow tradeoff, or pass check_finite=False to disable "
+            "this check."
+        )
+
+
 def lyapunov_spectrum(
         step_fn: StepFn,
         state0: jnp.ndarray,
@@ -79,6 +126,7 @@ def lyapunov_spectrum(
         renorm_every: int = 1,
         t_transient: float = 0.0,
         seed: int = 0,
+        check_finite: bool = False,
 ) -> LyapunovResult:
     """
     Compute the (partial or full) Lyapunov spectrum of ``step_fn`` along the
@@ -106,12 +154,18 @@ def lyapunov_spectrum(
     t_transient : time to integrate (discarding tangent tracking) before
         starting the Lyapunov accumulation.
     seed : PRNG seed for the initial random tangent-vector basis.
+    check_finite : if True, raise ``FloatingPointError`` when any running
+        estimate in ``history`` is non-finite (a QR diagonal underflowed to
+        0 or overflowed to inf, e.g. from ``renorm_every`` too large).
+        Off by default and only usable when this function is called
+        eagerly (not wrapped in ``jax.jit``).
 
     Returns
     -------
     LyapunovResult
     """
     state0 = jnp.asarray(state0)
+    _warn_if_not_x64(state0)
     d = state0.shape[0]
     if k is None:
         k = d
@@ -119,6 +173,8 @@ def lyapunov_spectrum(
         raise ValueError(f"k must be in [1, {d}]; got {k}.")
     if n_steps <= 0:
         raise ValueError(f"n_steps must be > 0; got {n_steps}.")
+    if renorm_every < 1:
+        raise ValueError(f"renorm_every must be >= 1; got {renorm_every}.")
     if n_steps % renorm_every != 0:
         raise ValueError(
             f"n_steps ({n_steps}) must be a multiple of renorm_every "
@@ -174,4 +230,7 @@ def lyapunov_spectrum(
         return (state, Q), log_growth
 
     n_renorm = n_steps // renorm_every
-    return _run_renorm_scan(_renorm_block, (state0, Y0), n_renorm, renorm_every, dt)
+    result = _run_renorm_scan(_renorm_block, (state0, Y0), n_renorm, renorm_every, dt)
+    if check_finite:
+        _check_finite(result)
+    return result

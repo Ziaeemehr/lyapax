@@ -48,12 +48,13 @@ edge-aware ``coupling_fn`` signature, a separate design fork left for M5.
 """
 from __future__ import annotations
 
+import warnings
 from typing import Callable
 
 import jax
 import jax.numpy as jnp
 
-from .core import LyapunovResult, _run_renorm_scan
+from .core import LyapunovResult, _check_finite, _run_renorm_scan, _warn_if_not_x64
 from .simulator import make_step_fn
 
 CarryStepFn = Callable
@@ -66,14 +67,37 @@ m=1 for a scalar DDE (e.g. Mackey-Glass), m>1 for a small non-networked
 vector DDE. See make_scalar_delayed_step_fn."""
 
 
-def resolve_tau_steps(tau: float, dt: float) -> int:
+def resolve_tau_steps(tau: float, dt: float, warn_tol: float = 1e-6) -> int:
     """Round a physical delay ``tau`` to an integer number of ``dt`` steps.
 
     Integer-step only, no sub-step interpolation -- see risk #4 in
     notes/milestones.md for the accuracy tradeoff this implies (characterize
-    it with a convergence-vs-dt test at fixed physical ``tau``).
+    it with a convergence-vs-dt test at fixed physical ``tau``). Every
+    downstream Lyapunov spectrum is computed for the *rounded* delay
+    ``tau_eff(tau_steps, dt)``, not the exact ``tau`` passed in -- use
+    ``tau_eff`` to see what delay was actually used, and decrease ``dt``
+    to shrink the gap.
+
+    warn_tol : relative tolerance (of ``tau``) above which a mismatch
+        between ``tau`` and the rounded ``tau_eff`` triggers a warning.
     """
-    return max(1, round(tau / dt))
+    tau_steps = max(1, round(tau / dt))
+    if tau > 0 and abs(tau_steps * dt - tau) / tau > warn_tol:
+        warnings.warn(
+            f"resolve_tau_steps: requested tau={tau} rounds to "
+            f"tau_steps={tau_steps} (tau_eff={tau_steps * dt}) at dt={dt} "
+            "-- the Lyapunov spectrum will be computed for tau_eff, not "
+            "tau. Decrease dt to shrink this gap.",
+            stacklevel=2,
+        )
+    return tau_steps
+
+
+def tau_eff(tau_steps: int, dt: float) -> float:
+    """The effective (rounded-to-grid) delay actually used by a DDE run
+    built with integer ``tau_steps``, in the same units as ``dt``. See
+    ``resolve_tau_steps``."""
+    return tau_steps * dt
 
 
 def constant_history_buf0(cvar_state0: jnp.ndarray, horizon: int) -> jnp.ndarray:
@@ -159,6 +183,7 @@ def lyapunov_spectrum_dde(
         renorm_every: int = 1,
         t_transient: float = 0.0,
         seed: int = 0,
+        check_finite: bool = False,
 ) -> LyapunovResult:
     """
     Compute the (partial or full) Lyapunov spectrum of a fixed-delay DDE
@@ -176,8 +201,16 @@ def lyapunov_spectrum_dde(
         ``constant_history_buf0``).
     params : closed over for tangent propagation (not differentiated --
         only ``state``/``buf`` are).
-    dt, n_steps, k, renorm_every, seed : see ``lyapax.core.lyapunov_spectrum``
+    dt, n_steps, renorm_every, seed : see ``lyapax.core.lyapunov_spectrum``
         (same meaning).
+    k : number of leading exponents to track. Defaults to the *full*
+        augmented spectrum, ``k = d_total = state0.size + buf0.size`` --
+        note this is the ring-buffer-augmented dimension, not just the
+        physical state dimension, and grows with ``horizon`` (delay
+        length). Per-step cost and tangent-matrix memory are ``O(k)``, and
+        QR is ``O(d_total * k^2)``, so for large ``horizon`` (long delays
+        or many network nodes) pass an explicit small ``k`` rather than
+        relying on the full-spectrum default.
     t_transient : time to integrate (discarding tangent tracking) before
         starting the Lyapunov accumulation. Internally rounded up to cover
         at least one full ring cycle (``horizon * dt``): until every buffer
@@ -187,6 +220,10 @@ def lyapunov_spectrum_dde(
         concentrated in the buffer's trivial "just shifted forward
         unchanged" directions -- the same class of silent-bias risk M1's
         transient fix addresses for the plain ODE case, amplified here.
+    check_finite : see ``lyapax.core.lyapunov_spectrum`` (same meaning);
+        the augmented ``(state, buf)`` tangent dimension makes underflow
+        more likely for large ``horizon``, so this is worth enabling while
+        tuning ``renorm_every`` for a new DDE system.
 
     Returns
     -------
@@ -194,6 +231,7 @@ def lyapunov_spectrum_dde(
     """
     state0 = jnp.asarray(state0)
     buf0 = jnp.asarray(buf0)
+    _warn_if_not_x64(state0)
     horizon = buf0.shape[0]
     state_shape = state0.shape
     buf_shape = buf0.shape
@@ -207,6 +245,8 @@ def lyapunov_spectrum_dde(
         raise ValueError(f"k must be in [1, {d_total}]; got {k}.")
     if n_steps <= 0:
         raise ValueError(f"n_steps must be > 0; got {n_steps}.")
+    if renorm_every < 1:
+        raise ValueError(f"renorm_every must be >= 1; got {renorm_every}.")
     if n_steps % renorm_every != 0:
         raise ValueError(
             f"n_steps ({n_steps}) must be a multiple of renorm_every "
@@ -288,5 +328,8 @@ def lyapunov_spectrum_dde(
         return (state, buf, t, Y_state, Y_buf), log_growth
 
     n_renorm = n_steps // renorm_every
-    return _run_renorm_scan(
+    result = _run_renorm_scan(
         _renorm_block, (state0, buf0, t0, Y_state0, Y_buf0), n_renorm, renorm_every, dt)
+    if check_finite:
+        _check_finite(result)
+    return result

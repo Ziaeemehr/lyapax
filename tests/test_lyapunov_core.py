@@ -11,6 +11,7 @@ import numpy as np
 from lyapax.core import lyapunov_spectrum
 from lyapax.integrators import rk4_step
 from lyapax import systems
+from lyapax.utils import simulate_trajectory
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +150,36 @@ def test_rossler_lambda1_order_of_magnitude():
 
     assert 0.02 < float(result.exponents[0]) < 0.12
     assert abs(float(result.exponents[1])) < 0.02
+
+
+def test_rossler_sum_matches_divergence_identity():
+    # Tier 1.2: unlike Lorenz, trace(J) = a + (x - c) is state-dependent, so
+    # the structural check needs the trajectory's time-average of x:
+    # lambda1 + lambda2 + lambda3 = a - c + <x>_t (notes/validation_systems.md
+    # Sec 1.2). Stronger than the order-of-magnitude check above since it
+    # doesn't depend on trusting a literature lambda1 value at all.
+    a, b, c = 0.2, 0.2, 5.7
+    rhs = systems.rossler(a, b, c)
+    dt = 1e-2
+    step = rk4_step(rhs, dt)
+    state0 = jnp.array([1.0, 1.0, 1.0])
+    t_transient = 200.0
+    n_steps = 200_000
+    renorm_every = 10
+
+    result = lyapunov_spectrum(
+        step, state0=state0, dt=dt, n_steps=n_steps,
+        renorm_every=renorm_every, t_transient=t_transient,
+    )
+
+    # Same transient-length rounding lyapunov_spectrum uses internally, so
+    # <x>_t is averaged over the same post-transient window as the LE run.
+    n_transient = renorm_every * max(1, round(t_transient / dt / renorm_every))
+    traj = simulate_trajectory(step, state0, n_transient + n_steps)
+    x_mean = float(jnp.mean(traj[n_transient:, 0]))
+
+    expected_sum = a - c + x_mean
+    assert abs(float(jnp.sum(result.exponents)) - expected_sum) < 0.05
 
 
 # ---------------------------------------------------------------------------
