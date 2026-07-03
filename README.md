@@ -16,7 +16,7 @@ pip install -e ".[dev]"      # core + pytest/scipy for the test suite
 pip install -e ".[examples]" # + matplotlib, to run examples/
 ```
 
-Requires `jax>=0.10`, Python `>=3.10`.
+Requires `jax>=0.10`, Python `>=3.11`.
 
 **Enable float64 before anything else.** Lyapunov exponents are averages of
 log-growth rates accumulated over many steps; JAX's default float32
