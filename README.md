@@ -6,6 +6,12 @@ Benettin/QR method with `jax.jvp`/`jax.vmap` tangent propagation.
 ## Install
 
 ```bash
+pip install lyapax
+```
+
+For development (running the test suite or examples), install from a clone instead:
+
+```bash
 pip install -e ".[dev]"      # core + pytest/scipy for the test suite
 pip install -e ".[examples]" # + matplotlib, to run examples/
 ```
