@@ -82,6 +82,7 @@ Runnable, sphinx-gallery-formatted demos in `examples/` (`pip install
 
 | File | Task |
 |---|---|
+| `plot_00_time_series_sanity_check.py` | Inspecting the raw simulated time series before computing exponents |
 | `plot_01_linear_ode.py` | Exact-eigenvalue sanity check for the QR engine |
 | `plot_02_chaotic_maps.py` | 1D/2D maps with closed-form exponents |
 | `plot_03_chaotic_flows.py` | Lorenz/Rössler, the standard chaotic-ODE benchmarks |
