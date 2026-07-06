@@ -50,6 +50,7 @@ pip-delete-this-directory.txt
 # Type checker and tool output
 dmypy.json
 dmypy.json.lock
+*.json
 
 # Logs and local runtime output
 *.log

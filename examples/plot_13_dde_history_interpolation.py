@@ -31,29 +31,27 @@ demo measure *how the error behaves as dt shrinks*, not just its size at
 one ``dt``.
 
 **Reading the plot.** The grid-snapped curve should look noticeably less
-smooth than the interpolated one -- not simply "bigger error", but visibly
+smooth than the interpolated ones -- not simply "bigger error", but visibly
 non-monotonic in places, since its error is dominated by which way
 ``tau/dt`` happens to round at each ``dt``, not by a shrinking numerical
-truncation error. The interpolated curve should look like a clean,
-(roughly) straight line on log-log axes instead.
+truncation error. The interpolated curves should look like clean,
+(roughly) straight lines on log-log axes instead: slope ~2 for ``heun``,
+and visibly steeper (~4) for ``rk4`` until it hits the estimation noise
+floor.
 
-**An honest caveat.** The interpolated curve's slope comes out close to 1
-(error roughly halves when ``dt`` halves), not the much steeper slope a
-textbook Hermite interpolant (built from exact derivatives) would give.
-That cap does not come from the interpolation formula itself -- tested in
-isolation, against a known smooth function, it reconstructs values at its
-expected ~4th-order accuracy. A related fix landed for zero-delay coupled
-networks: they were capped the same way by coupling being read once per
-step and held fixed across it, rather than re-evaluated as the state
-evolved within it; recomputing coupling at each integrator stage's own
-state removed that cap entirely there. The analogous change for this
-delayed case -- reconstructing the delayed history lookup at each stage's
-own intra-step *time*, instead of once per step -- was tried and did
-*not* reduce this O(dt) cap, for reasons not yet understood (see
-notes/stepping_accuracy_review.md for what was ruled out). Interpolation
-still delivers what it promises -- an arbitrary, non-grid-aligned ``tau``
-used exactly, with smooth, predictable convergence -- just capped at this
-still-unexplained limit rather than at a higher order.
+**Convergence order.** Interpolation buys more than exactness in ``tau``:
+because the stored (value, derivative) pairs let the delayed value be
+reconstructed at *any* time, each integrator stage reads the history at
+its own intra-step time instead of freezing one read across the whole
+step. Freezing is an O(dt) error in the delayed argument, and it used to
+cap every integrator at first order for any delayed system regardless of
+the method's nominal order. With per-stage reads, the integrator's real
+order is realized: the interpolated curve below should show a slope close
+to 2 on log-log axes (``heun``'s nominal order), and switching to
+``integrator="rk4"`` steepens it to ~4 -- the cubic Hermite interpolant's
+own accuracy ceiling, so ``rk6`` buys nothing further for a DDE. The
+grid-snapped default has no sub-step history to read, so it stays O(dt)
+(on top of its non-monotonic ``tau``-rounding error).
 """
 # %%
 import os
@@ -82,12 +80,12 @@ dts = [4e-2, 2e-2, 1e-2, 5e-3, 2.5e-3]
 n_steps, renorm_every, t_transient = 40_000, 5, 20.0
 
 
-def _run(interpolate):
+def _run(interpolate, integrator="heun"):
     errors, tau_used = [], []
     for dt in dts:
         problem = dde_problem(
             rhs, state0=jnp.array([1.0]), tau=tau, dt=dt,
-            integrator="heun", interpolate=interpolate,
+            integrator=integrator, interpolate=interpolate,
         )
         result = lyapunov_spectrum_dde(
             problem, n_steps=n_steps, k=1, renorm_every=renorm_every,
@@ -100,6 +98,7 @@ def _run(interpolate):
 
 errors_snap, tau_eff_snap = _run(interpolate=False)
 errors_interp, tau_eff_interp = _run(interpolate=True)
+errors_interp_rk4, _ = _run(interpolate=True, integrator="rk4")
 
 print(f"\n{'dt':>8}  {'tau_eff (snap)':>14}  {'err (snap)':>11}  "
       f"{'tau_eff (interp)':>16}  {'err (interp)':>13}")
@@ -109,8 +108,9 @@ for dt, te_s, e_s, te_i, e_i in zip(
 
 # %%
 fig, ax = plt.subplots(figsize=(6, 4))
-ax.loglog(dts, errors_snap, "o-", label="grid-snapped (default)")
-ax.loglog(dts, errors_interp, "s-", label="Hermite-interpolated")
+ax.loglog(dts, errors_snap, "o-", label="grid-snapped (default), heun")
+ax.loglog(dts, errors_interp, "s-", label="Hermite-interpolated, heun")
+ax.loglog(dts, errors_interp_rk4, "^-", label="Hermite-interpolated, rk4")
 ax.set_xlabel("dt")
 ax.set_ylabel(r"$|\lambda_1 - \mathrm{exact}|$")
 ax.set_title(r"Scalar linear DDE, $\tau=0.317$ (not a multiple of any dt swept)")

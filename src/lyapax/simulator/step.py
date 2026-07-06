@@ -194,12 +194,19 @@ def _read_uniform_delayed_cvar_interp(
 # coupling was actually nonzero, regardless of the base method's nominal
 # order (rk4 and rk6 gave *identical* errors on a coupled network) -- see
 # notes/stepping_accuracy_review.md. ``make_step_fn``'s ``coupling_at``
-# only actually exploits this for the zero-delay case (coupling there
-# depends on ``y_stage``, which is now right at every stage); for
-# ``has_delays=True`` it still ignores ``c`` and reads once per step -- a
-# delayed lookup depends on *time*, not ``y_stage``, and re-deriving it at
-# each stage's own intra-step time did not empirically help (also in that
-# note), so it isn't done. A caller that has no coupling at all
+# exploits this in two places: for the zero-delay case, coupling depends
+# on ``y_stage`` (the evolving state), evaluated fresh at each stage; for
+# ``has_delays=True`` with ``interpolate=True``, the delayed lookup
+# depends on *time*, so it is re-read via the Hermite interpolant at each
+# stage's own intra-step time ``step + c``. (An earlier attempt at that
+# per-stage delayed read appeared not to help -- but it was made while
+# the ring-buffer write index was off by one full step, itself an O(dt)
+# bias that masked the improvement; with the write convention fixed, the
+# per-stage read restores the integrator's real order, capped at ~4 by
+# the cubic Hermite history -- see notes/stepping_accuracy_review.md.)
+# The grid-snapped delayed path (``interpolate=False``) still ignores
+# ``c``: without an interpolant there is no sub-step history to read, so
+# it stays O(dt) by construction. A caller that has no coupling at all
 # (``coupling_at`` returns a constant, or is never dependent on ``y``/``c``)
 # pays a few extra, cheap function calls for no behavior change.
 
@@ -292,15 +299,16 @@ def make_step_fn(
         "Integrators" section's module comment, and
         notes/stepping_accuracy_review.md for why freezing it instead
         silently caps the whole scheme at O(dt) whenever coupling is
-        nonzero. Only the zero-delay case actually benefits from this
-        today: coupling there depends on ``y_stage`` (the evolving state),
-        which ``coupling_at`` now gets right at each stage. For
-        ``has_delays=True`` (interpolated or not), ``coupling_at`` ignores
-        ``c`` and still reads once per step -- a delayed lookup depends on
-        *time*, not ``y_stage``, and re-deriving it at each stage's own
-        intra-step time did not empirically improve accuracy for reasons
-        not yet understood (see notes/stepping_accuracy_review.md), so
-        that attempt was reverted rather than left half-working.
+        nonzero. The zero-delay case reads coupling from ``y_stage`` (the
+        evolving state) fresh at each stage; the interpolated-delay case
+        (``interpolate=True``) reads the delayed history at each stage's
+        own intra-step time ``step + c`` via the Hermite interpolant, so
+        both realize the integrator's nominal order (the delayed case up
+        to the cubic Hermite history's own ~4th-order ceiling). Only the
+        grid-snapped delayed default (``interpolate=False``) still ignores
+        ``c`` and reads once per step -- without an interpolant there is
+        no sub-step history to read -- and remains O(dt); pass
+        ``interpolate=True`` for higher-order DDE stepping.
     coupling_fn : optional ``lyapax.coupling``-style plain callable,
         ``(cvar_state, weights, params) -> coupling`` (see
         ``lyapax.coupling.CouplingFn``). When given, replaces the
@@ -331,9 +339,13 @@ def make_step_fn(
         path only; not supported with the legacy per-edge ``delay_steps``
         path). ``tau_steps`` may then be a non-integer float: the physical
         delay no longer needs rounding to a whole number of ``dt`` steps.
-        Costs one extra ``dfun`` evaluation per step (to compute the
-        derivative to store) and doubles ``buf``'s per-slot size (value
-        and derivative, instead of just value).
+        Requires ``tau_steps >= 1`` (``tau >= dt``): the per-stage delayed
+        reads at intra-step times up to ``step + 1`` (and the derivative
+        stored at write time) must only ever land on ring-buffer slots
+        already finalized by earlier steps, which fails once the delay is
+        shorter than one step. Costs one extra ``dfun`` evaluation per
+        step (to compute the derivative to store) and doubles ``buf``'s
+        per-slot size (value and derivative, instead of just value).
     """
     if interpolate and not (has_delays and coupling_fn is not None and tau_steps is not None):
         raise ValueError(
@@ -341,6 +353,14 @@ def make_step_fn(
             "tau_steps (the uniform-delay path) -- interpolated reads are "
             "not supported with has_delays=False or the legacy per-edge "
             "delay_steps path."
+        )
+    if interpolate and tau_steps < 1:
+        raise ValueError(
+            f"interpolate=True requires tau_steps >= 1 (tau >= dt); got "
+            f"tau_steps={tau_steps}. A sub-step delay would make the "
+            "per-stage Hermite history reads (and the stored-derivative "
+            "computation) depend on ring-buffer slots not yet written at "
+            "read time -- decrease dt below tau instead."
         )
 
     cvar_idx = jnp.array(list(cvar_indices), dtype=jnp.int32)
@@ -355,20 +375,29 @@ def make_step_fn(
     # dropped roughly five orders of magnitude at the same dt, and rk4/rk6
     # stopped giving identical (order-1) errors.
     #
-    # For has_delays=True (both interpolate=True and the grid-snapped
-    # default), c is *not* used yet -- an attempt to also recompute the
-    # delayed lookup at each stage's own intra-step time (step + c) did
-    # not reduce the empirical convergence order below O(dt) as expected,
-    # for reasons not yet root-caused (ruled out so far: the interpolation
-    # formula itself, which tests at ~4th order in isolation; and initial-
-    # transient/discontinuity effects, which persist identically at t=50).
-    # Left as a known, documented open problem rather than shipped
-    # half-understood -- see notes/stepping_accuracy_review.md.
+    # For has_delays=True with interpolate=True, the delayed lookup is
+    # likewise re-read at each stage's own intra-step time (step + c) via
+    # the Hermite interpolant -- a delayed lookup depends on *time*, not
+    # y_stage. Reading it once per step and freezing it across stages is
+    # an O(dt) error in the delayed argument, which caps the whole scheme
+    # at first order exactly like frozen zero-delay coupling did. (This
+    # same change was once tried and looked ineffective -- but only
+    # because the ring-buffer write was then off by one slot, a second,
+    # independent O(dt) bias hiding the gain; see
+    # notes/stepping_accuracy_review.md Part C. With both fixed, the
+    # scalar linear DDE's measured order is ~2.0 under heun and ~4 under
+    # rk4/rk6, the cubic Hermite history's ceiling.) The stage times
+    # step + c never exceed step + 1, so with tau_steps >= 1 (validated
+    # above) every read lands on slots finalized by earlier steps.
+    #
+    # The grid-snapped default (interpolate=False) still ignores c: there
+    # is no sub-step history to read without an interpolant, so it stays
+    # O(dt) by construction.
     if coupling_fn is not None:
         def _coupling_at(y_stage, c, buf, step, params):
             if has_delays and interpolate:
                 cvar_state = _read_uniform_delayed_cvar_interp(
-                    buf, step, tau_steps, horizon, dt)
+                    buf, step + c, tau_steps, horizon, dt)
             elif has_delays:
                 cvar_state = _read_uniform_delayed_cvar(buf, step, tau_steps, horizon)
             else:

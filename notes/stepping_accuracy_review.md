@@ -7,8 +7,8 @@
 | DDE Hermite-interpolated history reads (`interpolate=True`) | **Shipped** |
 | Coupling recomputed per RK stage, zero-delay networks | **Shipped** |
 | Adaptive ODE integration | **Not started** (design below) |
-| Coupling/history recomputed per RK stage, DDE case | **Open** -- attempted, reverted, cause unknown |
-| Ring-buffer read/write off-by-one | **Fixed** -- confirmed real, ruled out as item 1's cause |
+| Coupling/history recomputed per RK stage, DDE case | **Shipped** -- an earlier attempt only looked ineffective because the ring-buffer off-by-one was masking it |
+| Ring-buffer read/write off-by-one | **Fixed** -- and retroactively identified as half of the DDE O(dt) mystery |
 
 ## Summary
 
@@ -167,8 +167,9 @@ must, `theta=0` at every read); at a `tau` not a multiple of any swept
 comes out `0.320, 0.320, 0.320, 0.315, 0.3175` across five `dt` values --
 worse at the finer `dt=0.005` than at `dt=0.01`), while interpolation uses
 `tau` exactly at every `dt` and decreases smoothly and monotonically.
-That smooth, predictable convergence is what shipped -- the *rate* of
-convergence is a separate, open question, see Part C.
+That smooth, predictable convergence is what shipped; the *rate* of
+convergence is now the integrator's own order (up to the Hermite
+interpolant's ~4th-order ceiling), see Part C.
 
 ## Part C: Coupling/History Frozen Across RK Stages
 
@@ -198,51 +199,60 @@ coupled network, at `dt=0.02`, RK4's error dropped from `3.1e-2` to
 magnitude, and RK4/RK6 no longer give identical errors. The residual
 `~1e-7` is finite-run/QR statistical noise, not truncation error.
 
-### DDE: attempted, reverted, still open
+### DDE: fixed (and a post-mortem of why it looked unfixable)
 
 The analogous change -- reconstructing the delayed history lookup at each
 stage's own intra-step *time* (`step + c`, via the same interpolant, which
 already accepts non-integer time arguments) instead of once per step --
-did **not** reduce the empirical convergence order below ~1, and was
-reverted (`has_delays=True` still reads once per step, both
-`interpolate=True` and the grid-snapped default) rather than shipped
-half-understood.
+is now shipped for `interpolate=True`, and restores the integrator's real
+convergence order. Measured on the scalar linear DDE (`a=0.5`,
+`tau=0.317`) against the Lambert-W analytic exponent:
 
-Ruled out before reverting:
+- `heun`: order 2.00, 2.00, 2.00 across `dt` halvings from 2e-2 (errors
+  9.2e-6 -> 1.4e-7); previously order ~1.0 with 1e-3-class errors.
+- `rk4`: order ~4.4 (2.1e-11 at `dt=2e-2`) down to the estimation noise
+  floor ~5e-14.
+- `rk6`: capped at ~order 4 -- the cubic Hermite interpolant's own
+  ceiling, the expected theoretical limit for this history
+  representation. `rk4` is the DDE sweet spot; `rk6` buys nothing more.
 
-- **The interpolation formula itself** -- tested in isolation (a known
-  smooth function, exact stored value/derivative pairs at synthetic grid
-  points) it recovers close to its expected 4th order.
-- **Initial-transient / discontinuity effects** -- DDE constant-history
-  initial conditions create a derivative discontinuity at `t=0` that can
-  locally degrade accuracy for a few delay cycles, but the ~order-1
-  behavior was identical at `t=5`, `t=25`, and `t=50` (tens of delay
-  cycles past the initial condition).
-- **The Lyapunov/QR machinery** -- the *primal trajectory* alone (no
-  tangent propagation, no QR, just `step_fn` forward vs. a `dt=1e-4`
-  reference) shows the same ~order-1 convergence, so the limitation is in
-  the state integration itself.
+**Why the first attempt at exactly this change looked ineffective**: it
+was made while `_write_ring_interp` still wrote the state at time
+`(t+1)*dt` under slot `t` (the off-by-one below) -- a one-full-step shift
+of the effective delay, itself an O(dt) bias in *which system was being
+solved*. Two independent O(dt) errors were stacked; removing either one
+alone leaves the measured order at ~1. The attempt removed only the
+frozen read (order still 1, blamed on the read fix, reverted); the later
+off-by-one fix was validated only against the reverted, frozen-read code
+(order still 1, "ruled out as the cause"). Only both together lift the
+cap. The earlier "ruled out" list was accurate but incomplete evidence:
+the interpolation formula, the transient, and the QR machinery were
+indeed all innocent.
 
-**Ring-buffer off-by-one: confirmed and fixed, ruled out as the cause.**
-`_write_ring`/`_write_ring_interp` wrote the newly integrated state
-(physical time `(t + 1) * dt`) into slot `t`, not `t + 1` -- confirmed
-directly in code (the `interpolate=True` branch already read coupling *at
-time `t + 1`* to compute the value it then stored under slot `t`) and
-independently by `tests/test_delayed_networks.py`'s near-zero per-edge-delay
-test, which had been silently passing because the bug turned a `tau_steps=1`
-delay into an effective zero delay. Fixed by writing under `t + 1`; see
-`tests/test_ring_buffer_time_convention.py` for the deterministic,
-Lyapunov-free invariant check. This was a real, independent bug, but
-re-measuring the `interpolate=True` DDE convergence order before and after
-the fix gives the same ~1.0 order both times -- it does not explain this
-section's O(dt) cap. See `notes/open_issues.md` item 2 for the full
-after-the-fact writeup.
+Two inherent limits remain, verified by re-running the sweep with a
+smooth exact-solution history (`x(t) = exp(lambda t)`, no breaking
+points), under which the *trajectory* itself measures ~4.4 with `rk4`
+down to float64 roundoff:
 
-**Current state:** the scalar linear DDE tested here shows ~O(dt)
-convergence under `euler`/`heun`/`rk4`/`rk6` and both `interpolate`
-settings, for a reason not yet understood -- a measured result for the
-paths actually tested, not a proven property of every DDE this package
-could express.
+- `interpolate=False` stays O(dt) by construction -- one stored sample
+  frozen across the step, no sub-step history to read, plus grid-rounded
+  `tau`.
+- Constant-history *trajectories* cap at ~order 2 from the `t=0`
+  breaking point (the slot-0 stored derivative can represent only one of
+  the two one-sided slopes there -- a one-time O(dt^2) injection).
+  Exponents don't feel this: the mandatory transient discards the
+  breaking-point region, so `rk4` reaches its ~4th order on the exponent.
+
+`interpolate=True` now validates `tau_steps >= 1` (`tau >= dt`) with a
+clear error: per-stage reads at intra-step times up to `step + 1` must
+only land on already-finalized ring-buffer slots. (Sub-step delays were
+silently unsound before, too -- the stored-derivative computation already
+read at `t + 1`.)
+
+Regression coverage: `tests/test_dde_interpolation.py`
+(`test_interpolate_heun_converges_at_second_order`,
+`test_interpolate_rk4_reaches_hermite_accuracy_floor`,
+`test_interpolate_rejects_sub_step_delay`).
 
 ## Why Adaptive ODE and DDE Interpolation Are Related but Solved Separately
 
