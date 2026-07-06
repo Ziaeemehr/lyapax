@@ -43,18 +43,33 @@ def rk4_step(rhs: RHS, dt: float) -> Step:
     return step
 
 
+RK6_STAGE_C = (0.0, 3 / 50, 1439 / 15000, 1439 / 10000, 4973 / 10000, 389 / 400, 1999 / 2000, 1.0)
+"""Butcher ``c_i`` (fractional position within the step) for each of
+``rk6_combine``'s 8 stages -- verified via each stage's row-sum
+consistency condition (``sum_j a_ij == c_i``) against the source tableau,
+see ``rk6_combine``'s docstring. Exposed so a coupled/delayed caller can
+recompute a state- or time-dependent input (e.g. network coupling, or a
+DDE's delayed history lookup) at the *correct* intra-step point for each
+stage, instead of freezing it at the step's start -- see
+notes/stepping_accuracy_review.md."""
+
+
 def rk6_combine(
-        f: Callable[[jnp.ndarray], jnp.ndarray],
+        f: Callable[[jnp.ndarray, float], jnp.ndarray],
         state: jnp.ndarray,
         dt: float,
 ) -> jnp.ndarray:
     """One fixed-step 6th-order Runge-Kutta update, ``state -> new_state``,
-    against a single derivative evaluator ``f`` (autonomous: ``f(y) ->
-    dy``). Factored out from ``rk6_step`` so ``lyapax.simulator.step``'s
-    coupled-network RK6 can reuse the exact same tableau against its own
-    ``f = lambda y: dfun(y, coupling, params)`` (coupling held fixed across
-    stages, the same convention its Euler/Heun/RK4 already use) instead of
-    duplicating ~30 lines of coefficients a second time.
+    against a derivative evaluator ``f(y, c) -> dy``, where ``c`` is that
+    stage's Butcher node (``RK6_STAGE_C``) -- the fractional position
+    within the step, ``0`` at the first stage, ``1`` at the last. Purely
+    autonomous callers (no coupling, no explicit time-dependence) can
+    ignore ``c``; ``lyapax.simulator.step``'s coupled-network RK6 uses it
+    to recompute coupling (or a delayed history lookup) fresh at each
+    stage's own intra-step state/time, rather than freezing it once per
+    step (see notes/stepping_accuracy_review.md) -- this and
+    ``rk6_step`` share the same tableau instead of duplicating ~30 lines
+    of coefficients twice.
 
     The 8-stage tableau is the ``a_ij`` coefficients (stages 1-8) of
     Verner's "efficient order 6(5)" embedded pair -- the coefficients
@@ -71,26 +86,24 @@ def rk6_combine(
     (mismatching first at ``z^7``, the expected order-6 signature), and
     separately confirmed with an empirical convergence-order check against
     a genuinely nonlinear system with a known exact solution -- see
-    ``tests/test_integrators.py``. Coefficients only enter as ratios
-    ``a_ij`` -- since ``f`` here never depends explicitly on time, the
-    stage *nodes* (``c_i``) that a non-autonomous solver would also need
-    never appear.
+    ``tests/test_integrators.py``.
     """
-    k1 = f(state)
-    k2 = f(state + dt * (3 / 50 * k1))
-    k3 = f(state + dt * (519479 / 27000000 * k1 + 2070721 / 27000000 * k2))
-    k4 = f(state + dt * (1439 / 40000 * k1 + 4317 / 40000 * k3))
+    c = RK6_STAGE_C
+    k1 = f(state, c[0])
+    k2 = f(state + dt * (3 / 50 * k1), c[1])
+    k3 = f(state + dt * (519479 / 27000000 * k1 + 2070721 / 27000000 * k2), c[2])
+    k4 = f(state + dt * (1439 / 40000 * k1 + 4317 / 40000 * k3), c[3])
     k5 = f(state + dt * (
         109225017611 / 82828840000 * k1
         - 417627820623 / 82828840000 * k3
         + 43699198143 / 10353605000 * k4
-    ))
+    ), c[4])
     k6 = f(state + dt * (
         -8036815292643907349452552172369 / 191934985946683241245914401600 * k1
         + 246134619571490020064824665 / 1543816496655405117602368 * k3
         - 13880495956885686234074067279 / 113663489566254201783474344 * k4
         + 755005057777788994734129 / 136485922925633667082436 * k5
-    ))
+    ), c[5])
     k7 = f(state + dt * (
         -1663299841566102097180506666498880934230261
         / 30558424506156170307020957791311384232000 * k1
@@ -98,7 +111,7 @@ def rk6_combine(
         - 3287100453856023634160618787153901962873 / 20724314915376755629135711026851409200 * k4
         + 2771826790140332140865242520369241 / 396438716042723436917079980147600 * k5
         - 1799166916139193 / 96743806114007800 * k6
-    ))
+    ), c[6])
     k8 = f(state + dt * (
         -832144750039369683895428386437986853923637763
         / 15222974550069600748763651844667619945204887 * k1
@@ -108,7 +121,7 @@ def rk6_combine(
         + 31796692141848558720425711042548134769375 / 4530254033500045975557858016006308628092 * k5
         - 14064542118843830075 / 766928748264306853644 * k6
         - 1424670304836288125 / 2782839104764768088217 * k7
-    ))
+    ), c[7])
     return state + dt * (
         382735282417 / 11129397249634 * k1
         + 5535620703125000 / 21434089949505429 * k4
@@ -126,7 +139,7 @@ def rk6_step(rhs: RHS, dt: float) -> Step:
     ``rk6_combine`` for the tableau, provenance, and correctness checks.
     """
     def step(state: jnp.ndarray) -> jnp.ndarray:
-        return rk6_combine(rhs, state, dt)
+        return rk6_combine(lambda y, _c: rhs(y), state, dt)
     return step
 
 

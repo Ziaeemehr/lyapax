@@ -171,35 +171,58 @@ def _read_uniform_delayed_cvar_interp(
 # ---------------------------------------------------------------------------
 # Integrators (pure JAX, traceable)
 # ---------------------------------------------------------------------------
+#
+# Each takes ``coupling_at(y_stage, c) -> coupling`` -- a callable, not a
+# precomputed array -- and calls it fresh at every stage, passing that
+# stage's own intra-step state estimate ``y_stage`` and Butcher node ``c``
+# (0 at the first stage, 1 at the last). This recomputes coupling (network
+# coupling, or a DDE's delayed history lookup) at the point it's actually
+# needed, instead of freezing it at the value read at the step's start --
+# freezing it, the earlier design, silently capped every one of these
+# methods at O(dt) whenever coupling was actually nonzero, regardless of
+# the base method's nominal order (rk4 and rk6 gave *identical* errors on
+# a coupled network) -- see notes/stepping_accuracy_review.md. A caller
+# that has no coupling at all (``coupling_at`` returns a constant, or is
+# never dependent on ``y``/``c``) pays a few extra, cheap function calls
+# for no behavior change.
 
-def _euler(state, dfun, coupling, dt, params):
-    return state + dt * dfun(state, coupling, params)
+_EULER_STAGE_C = (0.0,)
+_HEUN_STAGE_C = (0.0, 1.0)
+_RK4_STAGE_C = (0.0, 0.5, 0.5, 1.0)
 
 
-def _heun(state, dfun, coupling, dt, params):
-    k1 = dfun(state, coupling, params)
-    k2 = dfun(state + dt * k1, coupling, params)
+def _euler(state, dfun, coupling_at, dt, params):
+    c = _EULER_STAGE_C
+    k1 = dfun(state, coupling_at(state, c[0]), params)
+    return state + dt * k1
+
+
+def _heun(state, dfun, coupling_at, dt, params):
+    c = _HEUN_STAGE_C
+    k1 = dfun(state, coupling_at(state, c[0]), params)
+    y2 = state + dt * k1
+    k2 = dfun(y2, coupling_at(y2, c[1]), params)
     return state + 0.5 * dt * (k1 + k2)
 
 
-def _rk4(state, dfun, coupling, dt, params):
-    """Classic RK4, with ``coupling`` held fixed across the four stages
-    (same simplifying convention ``_heun`` already uses: coupling is read
-    once per step, not re-evaluated at the RK substeps)."""
-    k1 = dfun(state, coupling, params)
-    k2 = dfun(state + 0.5 * dt * k1, coupling, params)
-    k3 = dfun(state + 0.5 * dt * k2, coupling, params)
-    k4 = dfun(state + dt * k3, coupling, params)
+def _rk4(state, dfun, coupling_at, dt, params):
+    c = _RK4_STAGE_C
+    k1 = dfun(state, coupling_at(state, c[0]), params)
+    y2 = state + 0.5 * dt * k1
+    k2 = dfun(y2, coupling_at(y2, c[1]), params)
+    y3 = state + 0.5 * dt * k2
+    k3 = dfun(y3, coupling_at(y3, c[2]), params)
+    y4 = state + dt * k3
+    k4 = dfun(y4, coupling_at(y4, c[3]), params)
     return state + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
 
 
-def _rk6(state, dfun, coupling, dt, params):
-    """Fixed-step 6th-order Runge-Kutta, ``coupling`` held fixed across all
-    nine stages (same convention as ``_rk4``/``_heun``). See
-    ``lyapax.integrators.rk6_combine`` for the tableau, provenance, and
-    correctness checks -- this just plugs the coupled-network derivative
-    ``dfun(y, coupling, params)`` into that shared 9-stage combination."""
-    return rk6_combine(lambda y: dfun(y, coupling, params), state, dt)
+def _rk6(state, dfun, coupling_at, dt, params):
+    """See ``lyapax.integrators.rk6_combine`` for the tableau, provenance,
+    and correctness checks -- this just plugs the coupled-network
+    derivative ``dfun(y, coupling_at(y, c), params)``, recomputed fresh at
+    each of the 8 stages, into that shared combination."""
+    return rk6_combine(lambda y, c: dfun(y, coupling_at(y, c), params), state, dt)
 
 
 _STEP_INTEGRATORS: dict[str, Callable] = {
@@ -244,9 +267,18 @@ def make_step_fn(
     cases share this exact function; only the coupling branch differs.
 
     integrator : ``"euler"``, ``"heun"``, ``"rk4"``, ``"rk6"``, or a callable
-        ``(state, dfun, coupling, dt, params) -> new_state``. ``coupling``
-        is read once per step and held fixed across any internal stages
-        (see ``_rk4``'s docstring).
+        ``(state, dfun, coupling_at, dt, params) -> new_state``, where
+        ``coupling_at(y_stage, c) -> coupling`` is called fresh at each
+        internal stage (``y_stage``: that stage's intra-step state
+        estimate; ``c``: its Butcher node, 0 at the first stage, 1 at the
+        last) rather than being frozen once per step -- see the
+        "Integrators" section's module comment, and
+        notes/stepping_accuracy_review.md for why freezing it instead
+        silently caps the whole scheme at O(dt) whenever coupling is
+        nonzero. The zero-delay and interpolated-delay cases benefit from
+        this; the non-interpolated delayed case and the legacy per-edge
+        path still read once per step (no sub-step history available
+        without interpolation).
     coupling_fn : optional ``lyapax.coupling``-style plain callable,
         ``(cvar_state, weights, params) -> coupling`` (see
         ``lyapax.coupling.CouplingFn``). When given, replaces the
@@ -292,38 +324,58 @@ def make_step_fn(
     cvar_idx = jnp.array(list(cvar_indices), dtype=jnp.int32)
     integrate = _STEP_INTEGRATORS[integrator] if isinstance(integrator, str) else integrator
 
+    # coupling_at(y_stage, c, buf, step, params) -> coupling, called fresh
+    # at each integrator stage (see the "Integrators" section above): for
+    # has_delays=False, at that stage's own intra-step state y_stage (c is
+    # unused -- coupling only depends on the current state, not on time).
+    # This measurably fixes the zero-delay case (see
+    # notes/stepping_accuracy_review.md): a coupled linear network's error
+    # dropped roughly five orders of magnitude at the same dt, and rk4/rk6
+    # stopped giving identical (order-1) errors.
+    #
+    # For has_delays=True (both interpolate=True and the grid-snapped
+    # default), c is *not* used yet -- an attempt to also recompute the
+    # delayed lookup at each stage's own intra-step time (step + c) did
+    # not reduce the empirical convergence order below O(dt) as expected,
+    # for reasons not yet root-caused (ruled out so far: the interpolation
+    # formula itself, which tests at ~4th order in isolation; and initial-
+    # transient/discontinuity effects, which persist identically at t=50).
+    # Left as a known, documented open problem rather than shipped
+    # half-understood -- see notes/stepping_accuracy_review.md.
     if coupling_fn is not None:
-        def _coupling(buf, step, state, params):
+        def _coupling_at(y_stage, c, buf, step, params):
             if has_delays and interpolate:
                 cvar_state = _read_uniform_delayed_cvar_interp(
                     buf, step, tau_steps, horizon, dt)
             elif has_delays:
                 cvar_state = _read_uniform_delayed_cvar(buf, step, tau_steps, horizon)
             else:
-                cvar_state = state[cvar_idx]
+                cvar_state = y_stage[cvar_idx]
             return coupling_fn(cvar_state, weights, params)
     else:
-        def _coupling(buf, step, state, params):
+        def _coupling_at(y_stage, c, buf, step, params):
             G = params.get("G", G_default)
             if has_delays:
                 return _read_delayed_coupling(
                     buf, step, delay_steps, weights, G, coup_a, coup_b,
                     horizon, n_nodes)
-            cvar_state = state[cvar_idx]
+            cvar_state = y_stage[cvar_idx]
             return _instant_coupling(cvar_state, weights, G, coup_a, coup_b)
 
     def step(carry, _):
         state, buf, t, params = carry
-        coup = _coupling(buf, t, state, params)
-        new_state = integrate(state, dfun, coup, dt, params)
+        coupling_at = lambda y_stage, c: _coupling_at(y_stage, c, buf, t, params)  # noqa: E731
+        new_state = integrate(state, dfun, coupling_at, dt, params)
 
         if has_delays and interpolate:
-            # coup is reused (rather than re-reading the buffer at the new
-            # time, which would need the coupling this same write is
-            # producing) as the derivative estimate's coupling input --
-            # the same "coupling held fixed across the step" convention
-            # _heun/_rk4/_rk6 already use for the state's own integration.
-            new_deriv = dfun(new_state, coup, params)[cvar_idx]
+            # The derivative to store is the true d(cvar)/dt at new_state,
+            # which needs the coupling *at the new time* -- re-read it
+            # (interpolated) at t+1 rather than reusing this step's coupling:
+            # since tau_steps >= 1, this only touches ring-buffer slots
+            # already finalized by earlier steps, not the slot this step
+            # is about to write.
+            coup_new = _coupling_at(new_state, 0.0, buf, t + 1, params)
+            new_deriv = dfun(new_state, coup_new, params)[cvar_idx]
             new_buf = _write_ring_interp(buf, t, new_state[cvar_idx], new_deriv, horizon)
         elif has_delays:
             new_buf = _write_ring(buf, t, new_state[cvar_idx], horizon)

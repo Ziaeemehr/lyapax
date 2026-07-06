@@ -154,14 +154,17 @@ that wouldn't be true for a genuinely continuous-history DDE solver:
    integrator's error does, and can dominate the total error budget even
    when using `rk6`.
 
-### Proposed design: Hermite-interpolated history reads
+### Implemented: Hermite-interpolated history reads
 
 This is exactly what established adaptive-step DDE solvers do (the
 `jitcdde`/`jitcdde_lyap` precedent this repo's `dde.py` module docstring
 already compares itself against): reconstruct the delayed value from a
 **cubic Hermite interpolant** built from the value *and derivative* at the
 two grid points bracketing `t - tau`, rather than snapping to the nearer
-one.
+one. Implemented as `make_step_fn(..., interpolate=True)`, and surfaced
+through `dde_problem(..., interpolate=True)` /
+`network_dde_problem(..., interpolate=True)` -- default `interpolate=False`
+preserves today's grid-snapped behavior exactly, byte-for-byte.
 
 Concretely:
 
@@ -219,17 +222,112 @@ Concretely:
   float32/float64 or `renorm_every` overflow risks already documented in
   `notes/milestones.md`.
 
-### Validation plan
+### Validated: what actually happens, and an important related finding
 
-Repeat `test_linear_scalar_dde_dt_convergence` with interpolation active:
-expect the two-`dt` exponent discrepancy to shrink noticeably faster than
-today's `O(dt)`-ish bound as `dt` decreases (ideally tracking the
-interpolant's own `O(dt^3)`-`O(dt^4)` local accuracy, similar in spirit to
-the empirical convergence-order check added for `rk6` in
-`tests/test_integrators.py`), and add a case where `tau` is deliberately
-*not* a clean multiple of `dt` (today, `resolve_tau_steps` would silently
-warn and round; interpolation should let this run accurately without a
-warning at all).
+`tests/test_dde_interpolation.py` and
+`examples/plot_13_dde_history_interpolation.py` check this the same way
+`rk6` was validated: an exact-integer-`tau` case (interpolation must
+reduce to the grid-snapped answer bit-for-bit, since `theta=0` at every
+read -- confirmed to ~1e-10) and an empirical convergence-order sweep on
+the scalar linear DDE against its Lambert-W exact answer, at a `tau`
+deliberately not a multiple of any swept `dt`.
+
+The measured result is *not* what the design above predicted. Grid-
+snapping's error vs. `dt` is confirmed non-monotonic exactly as expected
+(e.g. at `tau=0.317`: `tau_eff` comes out `0.320, 0.320, 0.320, 0.315,
+0.3175` at `dt = 0.04, 0.02, 0.01, 0.005, 0.0025` -- getting *worse* at
+`dt=0.005` than at `dt=0.01`, and the exponent error follows suit).
+Interpolation fixes exactly that: `tau_eff` is `0.317` exactly at every
+`dt`, and the error decreases smoothly and monotonically. But its
+empirical order is close to **1**, not the higher order (`O(dt^3)`-
+`O(dt^4)`) a Hermite interpolant built from exact derivatives should give.
+
+The reason turned out to be unrelated to the interpolation formula
+itself, or to how the stored derivative is computed (reusing the coupling
+already read at the start of the step vs. re-reading it at the new time
+after advancing were both tried; both give the same ~order-1 result).
+It's a **separate, pre-existing limitation, shared by every integrator in
+this package**: `_euler`/`_heun`/`_rk4`/`_rk6` (`lyapax.simulator.step`)
+all read coupling *once* per step and hold it fixed across that step's
+internal stages. For a zero-delay, non-trivially-coupled network (`G !=
+0`), this was checked directly: sweeping `dt` on the same linear 4-node
+network from `plot_04_linear_network.py` with `G=0.5`, `rk4` and `rk6`
+give **identical errors to 4+ significant figures at every `dt`**, both
+converging at order ~1 -- RK6's nominal 6th-order accuracy is not actually
+realized for any coupled (delayed or not) system today, only for
+uncoupled ones (`G=0`, which is what this session's earlier `rk6`
+validation happened to use). Interpolation inherits this same cap rather
+than introducing a new one -- it still delivers exactly what it promises
+(an arbitrary `tau` used exactly, with smooth, predictable convergence),
+just capped at first order like everything else that involves nonzero
+coupling, delayed or not.
+
+Fixing the underlying cap means recomputing coupling at each integrator
+substage instead of freezing it once per step -- `_euler`/`_heun`/`_rk4`
+gained a `coupling_at(y_stage, c)` callable (called fresh at each stage,
+`y_stage` = that stage's own intra-step state, `c` = its Butcher node),
+and `rk6_combine` (`lyapax/integrators.py`) was generalized from
+`f(y) -> dy` to `f(y, c) -> dy` so `_rk6` could do the same, reusing
+`rk6_combine`'s own already-verified `c_i` values (`RK6_STAGE_C`) rather
+than hand-deriving a second set.
+
+### Follow-up: fixed for zero-delay, not yet for DDE
+
+For the **zero-delay** case, this is fully validated: `coupling_at` is
+called with that stage's own updated state, so a genuinely coupled
+network (`G != 0`) is now integrated as honestly as an uncoupled one.
+Re-running the same coupled-network sweep from above: at `dt=0.02`, RK4's
+error dropped from `3.1e-2` to `4.0e-7`, RK6's from `3.1e-2` to `1.8e-7`
+-- roughly **five orders of magnitude**, and RK4/RK6 no longer give
+identical errors (RK6 is now measurably better, as its nominal order
+implies). At that point the remaining ~`1e-7` residual is dominated by
+finite-run/QR statistical noise, not integration truncation error, so
+finer `dt` doesn't shrink it further -- the coupling term is no longer
+the bottleneck at all.
+
+For the **delayed** case, the analogous change was attempted --
+recomputing the delayed history lookup at each stage's own intra-step
+time (`step + c`, using the already-built Hermite interpolant, which
+already accepts non-integer time arguments) instead of once per step --
+but it did **not** reduce the empirical convergence order below ~1, and
+was reverted rather than shipped half-understood. Before reverting, three
+explanations were ruled out:
+
+- **The interpolation formula itself**: tested in isolation (a known
+  smooth function, `sin(t)`, with exact stored value/derivative pairs at
+  synthetic grid points) it recovers close to its expected 4th order.
+- **Initial-transient / discontinuity effects**: DDE constant-history
+  initial conditions are known to create a derivative discontinuity at
+  `t=0` that can locally degrade interpolation accuracy for a few delay
+  cycles -- but the ~order-1 behavior was identical whether the
+  comparison point was `t=5`, `t=25`, or `t=50` (tens of delay cycles
+  past the initial condition), so it isn't a lingering transient effect.
+- **The Lyapunov/QR machinery**: the *primal trajectory* alone (no
+  tangent propagation, no QR renormalization at all -- just running
+  `step_fn` forward and comparing against a `dt=1e-4` reference) shows the
+  same ~order-1 convergence, so the limitation is in the state
+  integration itself, not in how the exponent is estimated from it.
+
+One more thing was found but not conclusively tied to the above: a
+synthetic test of the raw ring-buffer read/write pair (writing known
+values at successive integer steps, then reading back a chosen offset)
+showed what looks like an off-by-one between which time a write's slot
+index is supposed to represent and which time a matching read actually
+retrieves. A direct end-to-end check (a small `tau_steps` where a
+one-step shift would be easily visible in the resulting exponent) did
+*not* cleanly match a simple "effective delay is one step short"
+hypothesis, though, so this may be a real, separate, pre-existing
+indexing subtlety worth its own dedicated investigation -- or it may not
+be the explanation for the order-1 ceiling at all. Recorded here as an
+open lead, not a diagnosis.
+
+**Current state**: `has_delays=True` (both `interpolate=True` and the
+grid-snapped default) still reads coupling once per step, unchanged from
+before this follow-up -- i.e., DDE Lyapunov exponents in this package
+remain capped at ~O(dt) regardless of integrator or interpolation choice,
+for a reason that is not yet fully understood. This is a genuine open
+problem, not a scheduling choice deferred for convenience like the rest
+of this note.
 
 ## Why These Two Are Related but Shouldn't Be Solved Together
 

@@ -85,8 +85,15 @@ def test_per_edge_delay_near_zero_recovers_m3_eigenvalues():
 
     np.testing.assert_allclose(np.array(result_ode.exponents), expected, atol=3e-3)
     np.testing.assert_allclose(np.array(result_dde.exponents), expected, atol=3e-3)
+    # Not tighter than result_dde's own atol above: step_ode's coupling is
+    # now recomputed fresh at each integrator stage instead of frozen once
+    # per step (see notes/stepping_accuracy_review.md), so it's
+    # essentially exact here; step_dde's legacy per-edge delay_steps path
+    # still freezes coupling once per step, so nearly all of the residual
+    # gap between the two is step_dde's own error against `expected`, not
+    # a sign of disagreement between the two methods.
     np.testing.assert_allclose(
-        np.array(result_dde.exponents), np.array(result_ode.exponents), atol=1e-3)
+        np.array(result_dde.exponents), np.array(result_ode.exponents), atol=2e-3)
 
 
 def test_two_node_symmetric_delayed_network_matches_lambert_w():
