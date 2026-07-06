@@ -156,7 +156,7 @@ def ode_problem(
     :param rhs: right-hand side, ``state (d,) -> dstate (d,)``.
     :param state0: ``(d,)`` initial state (pre-transient).
     :param dt: fixed step size.
-    :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, or a callable
+    :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, ``"rk6"``, or a callable
         ``(rhs, dt) -> step_fn`` -- see ``lyapax.integrators.ode_step``.
     """
     step_fn = ode_step(rhs, dt, integrator=integrator)

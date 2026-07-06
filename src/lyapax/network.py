@@ -132,7 +132,7 @@ def make_network_step_fn(
     :param coupling_fn: see ``lyapax.coupling`` — any callable with signature
         ``(cvar_state, weights, params) -> coupling`` works, including a
         user-defined one.
-    :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, or a callable
+    :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, ``"rk6"``, or a callable
         ``(state, dfun, coupling, dt, params) -> new_state`` -- see
         ``lyapax.simulator.make_step_fn``.
     """
@@ -168,7 +168,7 @@ def network_step(
         ``(cvar_state, weights, params) -> coupling``.
     :param params: closed over for this step function.
     :param dt: fixed step size.
-    :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, or a callable --
+    :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, ``"rk6"``, or a callable --
         see ``lyapax.simulator.make_step_fn``.
     """
     return make_network_step_fn(
@@ -217,7 +217,7 @@ def network_problem(
         n_nodes)`` shape -- flattened here either way, since
         ``network_step``'s step function operates on flat state.
     :param dt: fixed step size.
-    :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, or a callable --
+    :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, ``"rk6"``, or a callable --
         see ``lyapax.simulator.make_step_fn``.
     """
     step_fn = network_step(dfun, network, coupling, params, dt, integrator=integrator)

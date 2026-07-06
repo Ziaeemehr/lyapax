@@ -8,20 +8,24 @@ Two practical questions before trusting lyapax on a new problem:
    is a repeated call any cheaper than the first (i.e. is there a JIT
    cache to benefit from right now)?
 2. How does the Lorenz sum-of-exponents error shrink as the integration
-   step ``dt`` decreases (it should shrink quickly for RK4)?
+   step ``dt`` decreases, and how much does that depend on which
+   integrator computes each step?
 
 Both use the Lorenz system from ``plot_03_chaotic_flows.py`` as the test
 case: it's genuinely chaotic (so representative of a real workload,
 unlike the linear/map toy systems) yet still has the exact
 ``sum(lambda) = -(sigma + 1 + beta)`` invariant to measure error against,
 without needing a separate reference computation for question 2.
-``rk4_step`` (``lyapax.integrators``) is a 4th-order method, so halving
-``dt`` should shrink its local truncation error roughly 16-fold -- the
-log-log error-vs-dt plot below should come out close to a straight line
-of slope 4, which is the standard way to sanity-check that an integrator
-is achieving its nominal order rather than silently degrading (e.g. from
-a bug, or from the QR renormalization interval interacting badly with the
-step size).
+``rk4_step``/``rk6_step`` (``lyapax.integrators``) are 4th- and 6th-order
+methods, so halving ``dt`` should shrink their local truncation error
+roughly 16-fold and 64-fold respectively -- the log-log error-vs-dt plot
+below should come out close to two straight lines of slope 4 and 6, which
+is the standard way to sanity-check that an integrator is achieving its
+nominal order rather than silently degrading (e.g. from a bug, or from
+the QR renormalization interval interacting badly with the step size).
+RK6's steeper slope also means it reaches a given error at a much larger
+``dt`` than RK4 -- useful when RK4's error, not wall time, is what's
+limiting how few steps a run can get away with.
 """
 # %%
 import os 
@@ -37,7 +41,7 @@ import jax.numpy as jnp
 jax.config.update("jax_enable_x64", True)
 
 from lyapax.core import lyapunov_spectrum
-from lyapax.integrators import rk4_step
+from lyapax.integrators import rk4_step, rk6_step
 from lyapax import systems
 
 # %%
@@ -90,33 +94,52 @@ fig.tight_layout()
 plt.show()
 
 # %%
-# --- Accuracy vs dt: Lorenz sum-of-exponents error (RK4) ---
+# --- Accuracy vs dt: Lorenz sum-of-exponents error (RK4 vs RK6) ---
 # n_steps/t_transient are recomputed per dt so every run covers the same
 # *physical* time (500 post-transient + 100 transient time units) despite
 # taking a different number of steps -- otherwise a coarser dt would also
 # see a shorter, differently-converged run and confound the two effects.
-dts = [4e-2, 2e-2, 1e-2, 5e-3]
-errors = []
 expected_sum = -(sigma + 1.0 + beta)
 renorm_every = 10
-for dt_i in dts:
-    step_i = rk4_step(rhs, dt_i)
-    n_steps = (int(round(500.0 / dt_i)) // renorm_every) * renorm_every
-    t_transient = int(round(100.0 / dt_i)) * dt_i
-    result = lyapunov_spectrum(
-        step_i, state0=jnp.array([1.0, 1.0, 1.0]),
-        dt=dt_i, n_steps=n_steps, renorm_every=renorm_every,
-        t_transient=t_transient,
-    )
-    err = abs(float(jnp.sum(result.exponents)) - expected_sum)
-    errors.append(err)
-    print(f"dt={dt_i:.4f}: sum-of-exponents error = {err:.2e}")
+
+
+def _accuracy_vs_dt(step_builder, dts):
+    errors = []
+    for dt_i in dts:
+        step_i = step_builder(rhs, dt_i)
+        n_steps = (int(round(500.0 / dt_i)) // renorm_every) * renorm_every
+        t_transient = int(round(100.0 / dt_i)) * dt_i
+        result = lyapunov_spectrum(
+            step_i, state0=jnp.array([1.0, 1.0, 1.0]),
+            dt=dt_i, n_steps=n_steps, renorm_every=renorm_every,
+            t_transient=t_transient,
+        )
+        errors.append(abs(float(jnp.sum(result.exponents)) - expected_sum))
+    return errors
+
+
+dts_rk4 = [4e-2, 2e-2, 1e-2, 5e-3]
+errors_rk4 = _accuracy_vs_dt(rk4_step, dts_rk4)
+for dt_i, err in zip(dts_rk4, errors_rk4):
+    print(f"RK4 dt={dt_i:.4f}: sum-of-exponents error = {err:.2e}")
+
+# RK6's error is already tiny at RK4's dt values, so it's swept at coarser
+# (larger) dt instead -- the point is comparing slopes on the log-log plot,
+# not matching x-ranges exactly. dt much above 8e-2 pushes Lorenz's fast
+# timescale outside RK6's stability region and the trajectory blows up, so
+# the sweep stays below that.
+dts_rk6 = [8e-2, 4e-2, 2e-2, 1e-2]
+errors_rk6 = _accuracy_vs_dt(rk6_step, dts_rk6)
+for dt_i, err in zip(dts_rk6, errors_rk6):
+    print(f"RK6 dt={dt_i:.4f}: sum-of-exponents error = {err:.2e}")
 
 # %%
 fig, ax = plt.subplots(figsize=(6, 4))
-ax.loglog(dts, errors, "o-")
+ax.loglog(dts_rk4, errors_rk4, "o-", label="RK4 (slope 4)")
+ax.loglog(dts_rk6, errors_rk6, "s-", label="RK6 (slope 6)")
 ax.set_xlabel("dt")
 ax.set_ylabel(r"$|\sum \lambda_i - \mathrm{exact}|$")
-ax.set_title("Lorenz: integration accuracy vs dt (RK4)")
+ax.set_title("Lorenz: integration accuracy vs dt, RK4 vs RK6")
+ax.legend()
 fig.tight_layout()
 plt.show()

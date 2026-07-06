@@ -18,6 +18,7 @@ from typing import Callable
 
 import jax.numpy as jnp
 
+from ..integrators import rk6_combine
 from .model_spec import ModelSpec
 
 
@@ -147,10 +148,20 @@ def _rk4(state, dfun, coupling, dt, params):
     return state + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
 
 
+def _rk6(state, dfun, coupling, dt, params):
+    """Fixed-step 6th-order Runge-Kutta, ``coupling`` held fixed across all
+    nine stages (same convention as ``_rk4``/``_heun``). See
+    ``lyapax.integrators.rk6_combine`` for the tableau, provenance, and
+    correctness checks -- this just plugs the coupled-network derivative
+    ``dfun(y, coupling, params)`` into that shared 9-stage combination."""
+    return rk6_combine(lambda y: dfun(y, coupling, params), state, dt)
+
+
 _STEP_INTEGRATORS: dict[str, Callable] = {
     "euler": _euler,
     "heun": _heun,
     "rk4": _rk4,
+    "rk6": _rk6,
 }
 
 
@@ -186,7 +197,7 @@ def make_step_fn(
     ``buf`` is a no-op array when ``has_delays=False`` — the ODE and DDE
     cases share this exact function; only the coupling branch differs.
 
-    integrator : ``"euler"``, ``"heun"``, ``"rk4"``, or a callable
+    integrator : ``"euler"``, ``"heun"``, ``"rk4"``, ``"rk6"``, or a callable
         ``(state, dfun, coupling, dt, params) -> new_state``. ``coupling``
         is read once per step and held fixed across any internal stages
         (see ``_rk4``'s docstring).

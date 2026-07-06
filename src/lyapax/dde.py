@@ -147,7 +147,7 @@ def make_scalar_delayed_step_fn(
     :param m: state dimension (e.g. 1 for a scalar DDE like Mackey-Glass).
     :param tau_steps: integer delay in units of ``dt`` (see
         ``resolve_tau_steps``).
-    :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, or a callable --
+    :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, ``"rk6"``, or a callable --
         see ``lyapax.simulator.make_step_fn``.
     """
     def dfun(state, coupling, params):
@@ -230,7 +230,7 @@ def dde_problem(
         for a non-constant history. Defaults to the constant-history
         convention (``state0`` held for all ``t <= 0``), see
         ``scalar_delayed_history0``.
-    :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, or a callable --
+    :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, ``"rk6"``, or a callable --
         see ``lyapax.simulator.make_step_fn``.
     """
     state0 = jnp.asarray(state0)
@@ -279,7 +279,7 @@ def network_dde_problem(
     :param history: optional ``(tau_steps + 1, n_cvar, n_nodes)`` initial
         ring buffer. Defaults to the constant-history convention, see
         ``constant_history_buf0``.
-    :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, or a callable --
+    :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, ``"rk6"``, or a callable --
         see ``lyapax.simulator.make_step_fn``.
     """
     if tau is not None:

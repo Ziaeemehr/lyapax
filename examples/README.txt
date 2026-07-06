@@ -17,10 +17,10 @@ Kuramoto network showing what transmission delay does to synchronization
 (Tier 4-5) -- a matrix-free (jvp/vmap) tangent-propagation speedup on
 a large network, a jax.vmap parameter-sweep helper (one batched call
 reproducing an earlier Python-loop G-sweep, faster and bit-for-bit
-identical), and the public front door (``ode_step``, ``Network``/
-``network_step``, ``dde_problem``/``network_dde_problem``) that gives
+identical), and the public front door (``ode_problem``, ``Network``/
+``network_problem``, ``dde_problem``/``network_dde_problem``) that gives
 plain, coupled, and delayed systems the same dynamics/network/coupling/
-integrator construction recipe.
+integrator/problem construction recipe, with ``state0``/``dt`` given once.
 
 New capability -> new demo: as engine features land (a new coupling kind, a
 new delay structure, a performance change, ...), add a runnable example

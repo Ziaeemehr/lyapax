@@ -9,9 +9,9 @@ package is held to.
 from __future__ import annotations
 
 from . import coupling
-from .core import ODEProblem, LyapunovResult, lyapunov_spectrum, ode_problem
+from .core import LyapunovResult, ODEProblem, lyapunov_spectrum, ode_problem
 from .dde import DDEProblem, dde_problem, lyapunov_spectrum_dde, network_dde_problem
-from .integrators import euler_step, get_integrator, heun_step, ode_step, rk4_step
+from .integrators import euler_step, get_integrator, heun_step, ode_step, rk4_step, rk6_step
 from .network import Network, network_problem, network_step, network_step_parametrized
 
 __version__ = "0.0.1"
@@ -33,6 +33,7 @@ __all__ = [
     "euler_step",
     "heun_step",
     "rk4_step",
+    "rk6_step",
     "ode_step",
     "get_integrator",
 ]

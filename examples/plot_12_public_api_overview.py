@@ -1,27 +1,33 @@
 """
-The lyapax front door: ode_step, Network, and problem objects
-================================================================
+The lyapax front door: problem objects for ODEs, networks, and DDEs
+=======================================================================
 
 Every example so far reaches the Lyapunov engine through a different door:
-plain systems build a step with ``rk4_step``, networks assemble one through
+plain systems build a step with ``rk4_step`` and pass ``state0``/``dt`` a
+second time into ``lyapunov_spectrum``, networks assemble a step through
 ``make_network_step_fn`` with topology/coupling/integrator all passed as
-separate positional arguments, and delayed systems hand
-``lyapunov_spectrum_dde`` a raw ``(state0, buf0, params, dt)`` tuple that
-exposes the ring buffer directly. This demo shows the layer that makes all
-three follow the *same* four-step recipe:
+separate positional arguments (and, again, a second ``dt``), and delayed
+systems hand ``lyapunov_spectrum_dde`` a raw ``(state0, buf0, params, dt)``
+tuple that exposes the ring buffer directly. Passing ``dt`` twice is not
+just repetitive -- nothing checks that the two copies agree, so a typo in
+either one silently computes the spectrum for the wrong step size.
+
+This demo shows the layer that gives all three cases the *same* four-step
+recipe, with each piece of data given exactly once:
 
 1. define the dynamics (``rhs`` or ``dfun``),
 2. optionally define a network (``Network``) and coupling rule,
 3. pick an integrator by name (``"euler"``, ``"heun"``, ``"rk4"``),
-4. compute the spectrum.
+4. bundle everything (including ``state0`` and ``dt``) into a problem
+   object, and hand *that* to the spectrum function together with
+   ``n_steps``.
 
-``ode_step``, ``Network``/``network_step``, and ``dde_problem``/
-``network_dde_problem`` are thin wrappers around the exact same engine used
-in the earlier examples -- nothing about the numerics changes, only how
-much of the ring-buffer/carry machinery the caller has to see. Each section
-below re-derives one of the earlier examples' known-exact answers through
-the new front door, so "does this actually compute the same thing" is
-checked, not just asserted.
+``ode_problem``, ``network_problem``, and ``network_dde_problem`` are thin
+wrappers around the exact same engine used in the earlier examples --
+nothing about the numerics changes, only how much plumbing the caller has
+to see and keep in sync by hand. Each section below re-derives one of the
+earlier examples' known-exact answers through the new front door, so "does
+this actually compute the same thing" is checked, not just asserted.
 """
 # %%
 import os
@@ -41,13 +47,13 @@ from lyapax import coupling as lc
 from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
 
 # %%
-# 1. Plain ODE: ``ode_step(rhs, dt, integrator=...)``
-# -----------------------------------------------------
+# 1. Plain ODE: ``ode_problem(rhs, state0, dt, integrator=...)``
+# -----------------------------------------------------------------
 # Same linear system as ``plot_01_linear_ode.py`` (diagonal ``A``, so the
-# exact Lyapunov spectrum is just ``A``'s eigenvalues): ``ode_step`` is a
-# one-line stand-in for picking an integrator function directly (``rk4_step``
-# and ``ode_step(..., integrator="rk4")`` build the identical step here --
-# the wrapper only adds the ability to swap integrators by name).
+# exact Lyapunov spectrum is just ``A``'s eigenvalues). ``ode_problem``
+# builds the step (via ``ode_step`` internally) and carries ``state0``/``dt``
+# alongside it, so ``lyapunov_spectrum`` only needs the problem and
+# ``n_steps`` -- ``dt`` is given once, not once per function call.
 A = jnp.diag(jnp.array([-1.0, -2.0, -5.0]))
 
 
@@ -55,26 +61,27 @@ def linear_rhs(state):
     return A @ state
 
 
-dt_ode = 1e-3
-step = lyapax.ode_step(linear_rhs, dt=dt_ode, integrator="rk4")
+problem_ode = lyapax.ode_problem(
+    linear_rhs, state0=jnp.array([0.3, -0.2, 0.5]), dt=1e-3, integrator="rk4",
+)
 result_ode = lyapax.lyapunov_spectrum(
-    step, state0=jnp.array([0.3, -0.2, 0.5]),
-    dt=dt_ode, n_steps=20_000, renorm_every=10, t_transient=5.0,
+    problem_ode, n_steps=20_000, renorm_every=10, t_transient=5.0,
 )
 
 expected_ode = np.array([-1.0, -2.0, -5.0])
 print("plain ODE")
-print(f"  exact eigenvalues: {expected_ode}")
-print(f"  ode_step estimate: {np.array(result_ode.exponents)}")
+print(f"  exact eigenvalues:  {expected_ode}")
+print(f"  ode_problem estimate: {np.array(result_ode.exponents)}")
 
 # %%
-# 2. Coupled network: ``Network`` + ``network_step(..., integrator=...)``
-# --------------------------------------------------------------------------
+# 2. Coupled network: ``Network`` + ``network_problem(..., integrator=...)``
+# -------------------------------------------------------------------------
 # Same 4-node cycle network as ``plot_04_linear_network.py``: identical
 # scalar node dynamics ``x_i' = gamma*x_i + c_i`` coupled linearly through
 # adjacency matrix ``W``, so the exact spectrum is ``eig(gamma*I + G*W)``.
-# ``Network`` just names ``weights``/``cvar_indices`` as one object instead
-# of two parallel positional arguments; ``network_step`` reads them off it.
+# ``Network`` names ``weights``/``cvar_indices`` as one object instead of two
+# parallel positional arguments; ``network_problem`` reads them off it and,
+# like ``ode_problem`` above, folds in ``state0``/``dt`` too.
 weights = jnp.array([
     [0., 1., 0., 1.],
     [1., 0., 1., 0.],
@@ -94,19 +101,18 @@ model = ModelSpec(
 dfun = build_jax_dfun(model)
 network = lyapax.Network(weights=weights, cvar_indices=model.cvar_indices)
 
-dt_net = 1e-3
-step_net = lyapax.network_step(
+problem_net = lyapax.network_problem(
     dfun, network, lc.linear_coupling(a=1.0, b=0.0),
-    params={"gamma": gamma, "G": G}, dt=dt_net, integrator="heun",
+    params={"gamma": gamma, "G": G}, state0=jnp.array([0.3, -0.1, 0.2, -0.4]),
+    dt=1e-3, integrator="heun",
 )
 result_net = lyapax.lyapunov_spectrum(
-    step_net, state0=jnp.array([0.3, -0.1, 0.2, -0.4]),
-    dt=dt_net, n_steps=20_000, renorm_every=10, t_transient=5.0,
+    problem_net, n_steps=20_000, renorm_every=10, t_transient=5.0,
 )
 
 print("coupled network")
-print(f"  exact eigenvalues:    {expected_net}")
-print(f"  network_step estimate: {np.array(result_net.exponents)}")
+print(f"  exact eigenvalues:      {expected_net}")
+print(f"  network_problem estimate: {np.array(result_net.exponents)}")
 
 # %%
 # 3. Delayed coupled network: ``network_dde_problem``
@@ -156,7 +162,7 @@ for ax, result, expected, title in zip(
     axes,
     [result_ode, result_net, result_dde],
     [expected_ode, expected_net, expected_dde],
-    ["ode_step", "network_step", "network_dde_problem"],
+    ["ode_problem", "network_problem", "network_dde_problem"],
 ):
     h, t = np.array(result.history), np.array(result.times)
     for i, lam in enumerate(expected):
