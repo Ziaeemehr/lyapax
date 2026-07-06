@@ -6,10 +6,15 @@ integer-step delay rounding (tau no longer snaps to the nearest dt
 multiple, and its error no longer aliases non-monotonically as dt
 shrinks), but the realized convergence order is capped at O(dt), not the
 higher order a textbook Hermite interpolant would give with exact
-derivatives -- that cap comes from a separate, pre-existing limitation
-(coupling held fixed across one integrator step, shared by euler/heun/rk4/
-rk6 for *any* nonzero coupling, delayed or not), not from the
-interpolation itself.
+derivatives -- that cap does not come from the interpolation formula
+itself (verified in isolation to be near its expected 4th order). A later
+follow-up fixed the analogous "coupling held fixed across one integrator
+step" issue for zero-delay coupled networks (recomputing coupling at each
+stage's own intra-step state instead), but the same idea applied to the
+delayed lookup here -- re-deriving it at each stage's own intra-step time
+via the interpolant, instead of once per step -- did not reduce this
+O(dt) cap, for reasons not yet understood. See the note for what was
+ruled out.
 """
 import warnings
 

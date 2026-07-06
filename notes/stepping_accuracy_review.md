@@ -323,10 +323,12 @@ open lead, not a diagnosis.
 
 **Current state**: `has_delays=True` (both `interpolate=True` and the
 grid-snapped default) still reads coupling once per step, unchanged from
-before this follow-up -- i.e., DDE Lyapunov exponents in this package
-remain capped at ~O(dt) regardless of integrator or interpolation choice,
-for a reason that is not yet fully understood. This is a genuine open
-problem, not a scheduling choice deferred for convenience like the rest
+before this follow-up. The scalar linear DDE tested here shows ~O(dt)
+convergence under both `euler`/`heun`/`rk4`/`rk6` and both `interpolate`
+settings, for a reason that is not yet fully understood -- stated as a
+measured result for the paths actually tested, not a proven property of
+every DDE this package could express. This is a genuine open problem, not
+a scheduling choice deferred for convenience like the rest
 of this note.
 
 ## Why These Two Are Related but Shouldn't Be Solved Together

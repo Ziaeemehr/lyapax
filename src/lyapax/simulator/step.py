@@ -175,16 +175,20 @@ def _read_uniform_delayed_cvar_interp(
 # Each takes ``coupling_at(y_stage, c) -> coupling`` -- a callable, not a
 # precomputed array -- and calls it fresh at every stage, passing that
 # stage's own intra-step state estimate ``y_stage`` and Butcher node ``c``
-# (0 at the first stage, 1 at the last). This recomputes coupling (network
-# coupling, or a DDE's delayed history lookup) at the point it's actually
-# needed, instead of freezing it at the value read at the step's start --
-# freezing it, the earlier design, silently capped every one of these
-# methods at O(dt) whenever coupling was actually nonzero, regardless of
-# the base method's nominal order (rk4 and rk6 gave *identical* errors on
-# a coupled network) -- see notes/stepping_accuracy_review.md. A caller
-# that has no coupling at all (``coupling_at`` returns a constant, or is
-# never dependent on ``y``/``c``) pays a few extra, cheap function calls
-# for no behavior change.
+# (0 at the first stage, 1 at the last), instead of freezing coupling at
+# the value read once at the step's start. Freezing it, the earlier
+# design, silently capped every one of these methods at O(dt) whenever
+# coupling was actually nonzero, regardless of the base method's nominal
+# order (rk4 and rk6 gave *identical* errors on a coupled network) -- see
+# notes/stepping_accuracy_review.md. ``make_step_fn``'s ``coupling_at``
+# only actually exploits this for the zero-delay case (coupling there
+# depends on ``y_stage``, which is now right at every stage); for
+# ``has_delays=True`` it still ignores ``c`` and reads once per step -- a
+# delayed lookup depends on *time*, not ``y_stage``, and re-deriving it at
+# each stage's own intra-step time did not empirically help (also in that
+# note), so it isn't done. A caller that has no coupling at all
+# (``coupling_at`` returns a constant, or is never dependent on ``y``/``c``)
+# pays a few extra, cheap function calls for no behavior change.
 
 _EULER_STAGE_C = (0.0,)
 _HEUN_STAGE_C = (0.0, 1.0)
@@ -275,10 +279,15 @@ def make_step_fn(
         "Integrators" section's module comment, and
         notes/stepping_accuracy_review.md for why freezing it instead
         silently caps the whole scheme at O(dt) whenever coupling is
-        nonzero. The zero-delay and interpolated-delay cases benefit from
-        this; the non-interpolated delayed case and the legacy per-edge
-        path still read once per step (no sub-step history available
-        without interpolation).
+        nonzero. Only the zero-delay case actually benefits from this
+        today: coupling there depends on ``y_stage`` (the evolving state),
+        which ``coupling_at`` now gets right at each stage. For
+        ``has_delays=True`` (interpolated or not), ``coupling_at`` ignores
+        ``c`` and still reads once per step -- a delayed lookup depends on
+        *time*, not ``y_stage``, and re-deriving it at each stage's own
+        intra-step time did not empirically improve accuracy for reasons
+        not yet understood (see notes/stepping_accuracy_review.md), so
+        that attempt was reverted rather than left half-working.
     coupling_fn : optional ``lyapax.coupling``-style plain callable,
         ``(cvar_state, weights, params) -> coupling`` (see
         ``lyapax.coupling.CouplingFn``). When given, replaces the

@@ -40,17 +40,20 @@ truncation error. The interpolated curve should look like a clean,
 **An honest caveat.** The interpolated curve's slope comes out close to 1
 (error roughly halves when ``dt`` halves), not the much steeper slope a
 textbook Hermite interpolant (built from exact derivatives) would give.
-That cap does not come from the interpolation formula itself -- it comes
-from a separate, already-existing simplification shared by every
-integrator in this package (Euler, Heun, RK4, RK6 alike): coupling is
-read once per step and held fixed across that step, rather than
-re-evaluated as the state changes within it. For a real, nonzero coupling
-strength, that alone limits the whole scheme to first-order accuracy in
-the coupling term, regardless of which integrator or history-reconstruction
-method is used elsewhere. Interpolation still delivers what it promises --
-an arbitrary, non-grid-aligned ``tau`` used exactly, with smooth,
-predictable convergence -- just capped at that shared limit rather than at
-a higher order.
+That cap does not come from the interpolation formula itself -- tested in
+isolation, against a known smooth function, it reconstructs values at its
+expected ~4th-order accuracy. A related fix landed for zero-delay coupled
+networks: they were capped the same way by coupling being read once per
+step and held fixed across it, rather than re-evaluated as the state
+evolved within it; recomputing coupling at each integrator stage's own
+state removed that cap entirely there. The analogous change for this
+delayed case -- reconstructing the delayed history lookup at each stage's
+own intra-step *time*, instead of once per step -- was tried and did
+*not* reduce this O(dt) cap, for reasons not yet understood (see
+notes/stepping_accuracy_review.md for what was ruled out). Interpolation
+still delivers what it promises -- an arbitrary, non-grid-aligned ``tau``
+used exactly, with smooth, predictable convergence -- just capped at this
+still-unexplained limit rather than at a higher order.
 """
 # %%
 import os
