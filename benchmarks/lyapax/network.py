@@ -5,7 +5,7 @@ import jax.numpy as jnp
 
 from lyapax.core import lyapunov_spectrum
 from lyapax.coupling import linear_coupling
-from lyapax.network import make_network_step_fn
+from lyapax.network import Network, network_problem
 from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
 
 from _common import time_and_run, emit
@@ -21,7 +21,7 @@ def _linear_node_model(gamma: float) -> ModelSpec:
     )
 
 
-def run():
+def run(integrator):
     weights = jnp.array([
         [0., 1., 0., 1.],
         [1., 0., 1., 0.],
@@ -33,16 +33,15 @@ def run():
     dfun = build_jax_dfun(model)
     params = {"gamma": gamma, "G": G}
     dt = 1e-3
-    step = make_network_step_fn(
-        dfun, weights, model.cvar_indices, params, dt,
-        coupling_fn=linear_coupling(a=1.0, b=0.0),
+    network = Network(weights=weights, cvar_indices=model.cvar_indices)
+    problem = network_problem(
+        dfun, network, linear_coupling(a=1.0, b=0.0), params,
+        state0=jnp.array([0.3, -0.1, 0.2, -0.4]), dt=dt, integrator=integrator,
     )
-    return lyapunov_spectrum(
-        step, state0=jnp.array([0.3, -0.1, 0.2, -0.4]),
-        dt=dt, n_steps=20_000, renorm_every=10, t_transient=5.0,
-    )
+    return lyapunov_spectrum(problem, n_steps=20_000, renorm_every=10, t_transient=5.0)
 
 
 if __name__ == "__main__":
-    first_s, warm_s, result = time_and_run(run)
-    emit("lyapax", "linear_network_tier3.1", result.exponents, first_s, warm_s)
+    for integrator, tool in [("rk4", "lyapax"), ("rk6", "lyapax-rk6")]:
+        first_s, warm_s, result = time_and_run(run, integrator)
+        emit(tool, "linear_network_tier3.1", result.exponents, first_s, warm_s)
