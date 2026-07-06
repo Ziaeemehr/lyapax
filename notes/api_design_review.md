@@ -1,5 +1,23 @@
 # API Design Review: ODE/DDE Symmetry and Integrator Extensibility
 
+## Status
+
+Implemented, following this note's "Suggested Implementation Order"
+almost exactly: integrator registry (`get_integrator`, `"euler"`/`"heun"`/
+`"rk4"`, plus `"rk6"` added later), `use_heun` replaced by `integrator=`
+(deprecated alias since removed entirely -- no backward-compat shim was
+kept, per later direction), `Network` dataclass, `network_step`/
+`network_problem`, `DDEProblem`/`dde_problem`/`network_dde_problem`,
+`lyapunov_spectrum`/`lyapunov_spectrum_dde` accepting problem objects, and
+examples/README updated to the new front door. Option A (two spectrum
+functions, both accepting problem objects) was chosen over Option B (one
+dispatcher) as recommended below. Adaptive ODE integrators were
+deliberately left for later, per this note's own scoping -- see
+`notes/stepping_accuracy_review.md` for that follow-up (not yet
+implemented) and for a related, separate finding (coupling/history frozen
+across RK stages) discovered while implementing DDE interpolation. The
+rest of this document is the original proposal, kept for reference.
+
 ## Summary
 
 The current API is already capable, but it exposes different mental models for
