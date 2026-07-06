@@ -10,9 +10,9 @@ at a fixed point. ``step_fn`` (however it's built -- ``rk4_step``,
 the exact function handed to ``lyapunov_spectrum`` can also just be run
 forward on its own and inspected as an ordinary time series -- no separate
 simulation code path to maintain. ``lyapax.utils.simulate_trajectory(
-step_fn, state0, n_steps)`` does this: it iterates ``step_fn`` via
-``jax.lax.scan`` and returns the whole trajectory, shape
-``(n_steps + 1, d)``, including the initial state.
+step_fn, state0, n_steps, dt=dt)`` does this: it iterates ``step_fn`` via
+``jax.lax.scan`` and returns ``(t, traj)``, the matching time axis and the
+whole trajectory (shape ``(n_steps + 1, d)``, including the initial state).
 
 **Single system.** The Lorenz system (also used in
 ``plot_03_chaotic_flows.py``): the raw time series of ``x(t)`` should show
@@ -61,8 +61,8 @@ step = rk4_step(systems.lorenz(sigma, rho, beta), dt)
 state0 = jnp.array([1.0, 1.0, 1.0])
 
 n_steps = 5_000
-traj = np.array(simulate_trajectory(step, state0, n_steps))
-t = np.arange(n_steps + 1) * dt
+t, traj = simulate_trajectory(step, state0, n_steps, dt=dt)
+t, traj = np.array(t), np.array(traj)
 
 fig, axes = plt.subplots(3, 1, figsize=(8, 6), sharex=True)
 for i, (ax, label) in enumerate(zip(axes, ["x", "y", "z"])):
@@ -111,8 +111,8 @@ net_step = make_network_step_fn(
 state0_net = jnp.array([0.3, -0.1, 0.2, -0.4])
 
 n_steps_net = 4_000
-traj_net = np.array(simulate_trajectory(net_step, state0_net, n_steps_net))
-t_net = np.arange(n_steps_net + 1) * dt_net
+t_net, traj_net = simulate_trajectory(net_step, state0_net, n_steps_net, dt=dt_net)
+t_net, traj_net = np.array(t_net), np.array(traj_net)
 
 fig, ax = plt.subplots(figsize=(7, 4))
 for i in range(4):
