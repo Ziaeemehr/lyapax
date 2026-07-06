@@ -3,9 +3,8 @@ Examples
 
 Runnable demos of lyapax's Lyapunov-exponent engine, in
 `sphinx-gallery <https://sphinx-gallery.github.io/>`_ format (each file is
-plain, directly-runnable Python -- sphinx-gallery is not wired up yet, see
-notes/milestones.md, but this directory is ready to point a
-``sphinx_gallery_conf`` at once docs exist).
+plain, directly-runnable Python, and also renders into the docs gallery --
+see ``docs/``).
 
 Demos cover: inspecting a model's raw simulated time series as a sanity
 check before computing exponents (single systems and coupled networks
@@ -22,5 +21,4 @@ identical).
 
 New capability -> new demo: as engine features land (a new coupling kind, a
 new delay structure, a performance change, ...), add a runnable example
-that exercises it, not just unit-test coverage -- see notes/milestones.md
-for which milestone each file corresponds to.
+that exercises it, not just unit-test coverage.

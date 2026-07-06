@@ -14,6 +14,7 @@ For development (running the test suite or examples), install from a clone inste
 ```bash
 pip install -e ".[dev]"      # core + pytest/scipy for the test suite
 pip install -e ".[examples]" # + matplotlib, to run examples/
+pip install -e ".[docs]"     # + sphinx/sphinx-gallery, to build docs/
 ```
 
 Requires `jax>=0.10`, Python `>=3.11`.
@@ -100,6 +101,17 @@ Runnable, sphinx-gallery-formatted demos in `examples/` (`pip install
 | `plot_09_kuramoto_delayed_network.py` | Effect of transmission delay on a Kuramoto network |
 | `plot_10_matrix_free_scaling.py` | Dense `jacfwd` vs. `jvp`/`vmap`, and why it matters for partial spectra |
 | `plot_11_vmap_parameter_sweep.py` | Batched parameter sweeps via `jax.vmap` |
+
+## Building the docs
+
+```bash
+pip install -e ".[docs]"
+sphinx-build -b html docs docs/_build/html
+```
+
+This re-runs every `examples/plot_*.py` file to render it into a
+sphinx-gallery gallery (code, output, and plots), alongside the API
+reference; open `docs/_build/html/index.html` when it's done.
 
 ## Further reading
 
