@@ -1,7 +1,7 @@
 """dfun codegen + the ring-buffer step(carry, _) factory.
 
-Adapted from vbi/simulator/backend/jax_/codegen.py and
-vbi/simulator/backend/jax_/simulator.py — see NOTICE.md in this directory
+Adapted from ``vbi/simulator/backend/jax_/codegen.py`` and
+``vbi/simulator/backend/jax_/simulator.py`` — see NOTICE.md in this directory
 for provenance and what was dropped (stochastic noise, state clipping,
 sigmoidal/kuramoto coupling, monitors/stimuli).
 

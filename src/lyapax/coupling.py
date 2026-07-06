@@ -4,7 +4,7 @@ Design note (notes/milestones.md, M3): coupling here is deliberately *not*
 a closed enum dispatched through hardcoded if/elif branches, unlike vbi's
 ``CouplingSpec.kind`` + ``build_coupling`` (duplicated across its numpy and
 JAX backends, with ``jr_sigmoidal`` even special-cased to skip the ``G``
-multiply). Each builder below just returns a plain function
+multiply). Each builder below just returns a plain function::
 
     coupling_fn(cvar_state, weights, params) -> coupling
 
@@ -12,14 +12,14 @@ that ``lyapax.network.make_network_step_fn`` calls directly. A user's own
 function with that exact signature is a first-class coupling — no
 registry, no "kind" string to add to a dispatch table, no library changes.
 
-cvar_state : (n_cvar, n_nodes)  current coupling-variable state. M3 is
+:param cvar_state: ``(n_cvar, n_nodes)`` current coupling-variable state. M3 is
     zero-delay only; M4/M5 will pass a delayed array of the same shape.
-weights    : (n_nodes, n_nodes)  weights[tgt, src].
-params     : dict — the global coupling strength ``G`` is read from here
+:param weights: ``(n_nodes, n_nodes)`` weights[tgt, src].
+:param params: dict — the global coupling strength ``G`` is read from here
     (``params.get("G", G_default)``), the same convention the vendored
     step function uses, so ``G`` can be swept (M6) or differentiated
     without being baked into a closure constant.
-returns    : (n_cvar, n_nodes)
+:returns: ``(n_cvar, n_nodes)``
 """
 from __future__ import annotations
 

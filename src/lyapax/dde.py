@@ -105,8 +105,8 @@ def constant_history_buf0(cvar_state0: jnp.ndarray, horizon: int) -> jnp.ndarray
     coupling-variable state is assumed equal to ``cvar_state0`` for all
     ``t <= 0``.
 
-    cvar_state0 : (n_cvar, n_nodes) coupling-variable state at t=0.
-    Returns : (horizon, n_cvar, n_nodes) buf0, ready for
+    :param cvar_state0: ``(n_cvar, n_nodes)`` coupling-variable state at t=0.
+    :returns: ``(horizon, n_cvar, n_nodes)`` buf0, ready for
         ``carry0 = (state0, buf0, jnp.int32(0), params)``.
     """
     cvar_state0 = jnp.asarray(cvar_state0)
@@ -140,10 +140,11 @@ def make_scalar_delayed_step_fn(
     through unchanged; any scaling/nonlinearity belongs in ``rhs_delayed``
     itself, not a coupling formula -- there's no real network here).
 
-    rhs_delayed : ``(state_now, state_delayed) -> dstate``, both shape
+    :param rhs_delayed: ``(state_now, state_delayed) -> dstate``, both shape
         ``(m,)`` -- see ``DelayedRHS``.
-    m : state dimension (e.g. 1 for a scalar DDE like Mackey-Glass).
-    tau_steps : integer delay in units of ``dt`` (see ``resolve_tau_steps``).
+    :param m: state dimension (e.g. 1 for a scalar DDE like Mackey-Glass).
+    :param tau_steps: integer delay in units of ``dt`` (see
+        ``resolve_tau_steps``).
     """
     def dfun(state, coupling, params):
         return rhs_delayed(state[:, 0], coupling[:, 0])[:, None]

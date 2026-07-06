@@ -90,16 +90,16 @@ def make_network_step_fn(
     Build a flat ``state_flat (n_sv * n_nodes,) -> new_state_flat`` step
     function for use with ``lyapax.core.lyapunov_spectrum``.
 
-    dfun : ``(state, coupling, params) -> dstate``, e.g. from
+    :param dfun: ``(state, coupling, params) -> dstate``, e.g. from
         ``lyapax.simulator.build_jax_dfun(model_spec)``. ``state`` and
         ``coupling`` are ``(n_sv, n_nodes)`` / ``(n_cvar, n_nodes)``.
-    weights : (n_nodes, n_nodes), ``weights[tgt, src]``.
-    cvar_indices : indices into the state-variable axis selecting which
+    :param weights: ``(n_nodes, n_nodes)``, ``weights[tgt, src]``.
+    :param cvar_indices: indices into the state-variable axis selecting which
         rows of ``state`` feed the coupling (``ModelSpec.cvar_indices``).
-    params : closed over for this step function. To sweep over params via
+    :param params: closed over for this step function. To sweep over params via
         ``jax.vmap`` instead, use ``make_parametrized_network_step_fn`` +
         ``lyapax.sweep.sweep_lyapunov_spectrum`` (M6).
-    coupling_fn : see ``lyapax.coupling`` — any callable with signature
+    :param coupling_fn: see ``lyapax.coupling`` — any callable with signature
         ``(cvar_state, weights, params) -> coupling`` works, including a
         user-defined one.
     """
