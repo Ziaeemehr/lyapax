@@ -55,8 +55,21 @@ def test_per_edge_delay_near_zero_recovers_m3_eigenvalues():
     model = _linear_node_model(gamma)
     dfun = build_jax_dfun(model)
     params = {"gamma": gamma, "G": G}
-    dt = 1e-3
+    # dt=1e-3 (an order of magnitude looser) used to pass here too, but only
+    # because the ring buffer's write-index off-by-one (see
+    # notes/possible_solution_to_open_issues.md) silently made a "1 step"
+    # delay behave like a 0-step delay -- i.e. this test was accidentally
+    # checking has_delays=True against itself, not a genuine small delay.
+    # Now that the write index is fixed (physical time k*dt lands in slot
+    # k, not k-1), tau_steps=1 is a real one-step delay, whose O(tau) bias
+    # away from the zero-delay eigenvalues scales with dt (confirmed:
+    # ~4.5e-3 at dt=1e-3, ~4.5e-4 at dt=1e-4) -- dt is tightened here to
+    # keep the delay genuinely close to the delay->0 limit the test name
+    # promises, rather than loosening the tolerances to admit a real,
+    # nonzero one-step delay.
+    dt = 1e-4
     state0 = jnp.array([[0.3, -0.1, 0.2, -0.4]])
+    n_steps = 200_000
 
     # M3, zero-delay.
     step_ode = make_network_step_fn(
@@ -64,7 +77,7 @@ def test_per_edge_delay_near_zero_recovers_m3_eigenvalues():
         coupling_fn=linear_coupling(a=1.0, b=0.0),
     )
     result_ode = lyapunov_spectrum(
-        step_ode, state0=state0[0], dt=dt, n_steps=20_000, renorm_every=10, t_transient=5.0)
+        step_ode, state0=state0[0], dt=dt, n_steps=n_steps, renorm_every=10, t_transient=5.0)
 
     # M5, minimal per-edge delay (every edge delayed by 1 step, uniform
     # value but still routed through the general per-edge delay_steps
@@ -80,7 +93,7 @@ def test_per_edge_delay_near_zero_recovers_m3_eigenvalues():
     buf0 = constant_history_buf0(state0, horizon)
     result_dde = lyapunov_spectrum_dde(
         step_dde, state0=state0, buf0=buf0, params=params, dt=dt,
-        n_steps=20_000, k=4, renorm_every=10, t_transient=5.0,
+        n_steps=n_steps, k=4, renorm_every=10, t_transient=5.0,
     )
 
     np.testing.assert_allclose(np.array(result_ode.exponents), expected, atol=3e-3)

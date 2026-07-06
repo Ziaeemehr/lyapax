@@ -8,7 +8,7 @@
 | Coupling recomputed per RK stage, zero-delay networks | **Shipped** |
 | Adaptive ODE integration | **Not started** (design below) |
 | Coupling/history recomputed per RK stage, DDE case | **Open** -- attempted, reverted, cause unknown |
-| Suspected ring-buffer read/write off-by-one | **Open lead**, unconfirmed |
+| Ring-buffer read/write off-by-one | **Fixed** -- confirmed real, ruled out as item 1's cause |
 
 ## Summary
 
@@ -223,14 +223,20 @@ Ruled out before reverting:
   reference) shows the same ~order-1 convergence, so the limitation is in
   the state integration itself.
 
-**Open lead, not confirmed:** a synthetic ring-buffer read/write test
-(write known values at successive integer steps, read back a chosen
-offset) showed what looks like an off-by-one between which time a write's
-slot is supposed to represent and which time a matching read retrieves. A
-direct end-to-end check (a small `tau_steps` where a one-step shift would
-be clearly visible) did *not* cleanly match a simple "effective delay is
-one step short" hypothesis, so this may or may not be the explanation --
-worth its own dedicated investigation before ruling it out.
+**Ring-buffer off-by-one: confirmed and fixed, ruled out as the cause.**
+`_write_ring`/`_write_ring_interp` wrote the newly integrated state
+(physical time `(t + 1) * dt`) into slot `t`, not `t + 1` -- confirmed
+directly in code (the `interpolate=True` branch already read coupling *at
+time `t + 1`* to compute the value it then stored under slot `t`) and
+independently by `tests/test_delayed_networks.py`'s near-zero per-edge-delay
+test, which had been silently passing because the bug turned a `tau_steps=1`
+delay into an effective zero delay. Fixed by writing under `t + 1`; see
+`tests/test_ring_buffer_time_convention.py` for the deterministic,
+Lyapunov-free invariant check. This was a real, independent bug, but
+re-measuring the `interpolate=True` DDE convergence order before and after
+the fix gives the same ~1.0 order both times -- it does not explain this
+section's O(dt) cap. See `notes/open_issues.md` item 2 for the full
+after-the-fact writeup.
 
 **Current state:** the scalar linear DDE tested here shows ~O(dt)
 convergence under `euler`/`heun`/`rk4`/`rk6` and both `interpolate`

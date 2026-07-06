@@ -75,7 +75,16 @@ def _instant_coupling(cvar_state: jnp.ndarray, weights: jnp.ndarray,
 
 def _write_ring(buf: jnp.ndarray, step: int, cvar_state: jnp.ndarray,
                 horizon: int) -> jnp.ndarray:
-    """buf: (horizon, n_cvar, n_nodes) -> updated buf."""
+    """buf: (horizon, n_cvar, n_nodes) -> updated buf.
+
+    Time convention (see notes/possible_solution_to_open_issues.md and
+    notes/open_issues.md item 2): slot ``k % horizon`` holds the
+    coupling-variable value at physical time ``k * dt``. ``step()``'s
+    caller must pass the physical time index of ``cvar_state`` itself as
+    ``step`` -- e.g. the newly integrated state advances the carry's own
+    step counter ``t`` to ``t + 1``, so it is written at ``step=t + 1``,
+    not ``t``. Writing under the wrong index by one silently shifts every
+    delayed read by one step (previously the case here -- fixed)."""
     return buf.at[step % horizon].set(cvar_state)
 
 
@@ -119,7 +128,10 @@ def _read_uniform_delayed_cvar(
     flat-index gather needed. Returns cvar_state (n_cvar, n_nodes), the same
     shape lyapax.coupling's plain-callable coupling_fn expects for the
     zero-delay case, so any existing coupling_fn works unmodified against
-    either instantaneous or uniformly-delayed cvar_state."""
+    either instantaneous or uniformly-delayed cvar_state. ``step`` is the
+    physical time index of *this* read (i.e. the caller's current time in
+    units of dt) -- see ``_write_ring``'s docstring for the matching write
+    convention this read relies on."""
     return buf[(step - tau_steps) % horizon]
 
 
@@ -131,7 +143,8 @@ def _write_ring_interp(
     delayed value *between* grid points via Hermite interpolation instead
     of only ever reading an exact stored sample -- see
     ``_read_uniform_delayed_cvar_interp``. ``buf``: ``(horizon, 2, n_cvar,
-    n_nodes) -> updated buf``."""
+    n_nodes) -> updated buf``. Same ``step`` time convention as
+    ``_write_ring``."""
     idx = step % horizon
     buf = buf.at[idx, 0].set(cvar_value)
     return buf.at[idx, 1].set(cvar_deriv)
@@ -385,9 +398,9 @@ def make_step_fn(
             # is about to write.
             coup_new = _coupling_at(new_state, 0.0, buf, t + 1, params)
             new_deriv = dfun(new_state, coup_new, params)[cvar_idx]
-            new_buf = _write_ring_interp(buf, t, new_state[cvar_idx], new_deriv, horizon)
+            new_buf = _write_ring_interp(buf, t + 1, new_state[cvar_idx], new_deriv, horizon)
         elif has_delays:
-            new_buf = _write_ring(buf, t, new_state[cvar_idx], horizon)
+            new_buf = _write_ring(buf, t + 1, new_state[cvar_idx], horizon)
         else:
             new_buf = buf
 
