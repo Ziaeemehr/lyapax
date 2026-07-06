@@ -15,12 +15,18 @@ same method the established ``jitcdde_lyap`` package implements for
 adaptive-step DDEs via Hermite-interpolated history): augment the system
 with explicit tangent dynamics for both ``state`` and ``buf``, propagate
 them alongside the primal trajectory, periodically re-orthonormalize via
-QR. Where this differs from ``jitcdde_lyap``: our scope is fixed-step with
-an integer-step delay, so a delayed value always lands exactly on a stored
-grid point -- no interpolation needed, so a plain finite-size ring buffer
-suffices and the tangent state is already finite-dimensional (a plain
-``jnp.linalg.qr``, not jitcdde's continuous-function inner product over a
-Hermite interpolant).
+QR. Where this differs from ``jitcdde_lyap``: our scope is fixed-step,
+with a finite-size ring buffer and a finite-dimensional tangent state (a
+plain ``jnp.linalg.qr``, not jitcdde's continuous-function inner product
+over a Hermite interpolant). By default a delayed value snaps to the
+nearest stored grid point (integer-step delay, no interpolation --
+``resolve_tau_steps`` rounds ``tau`` to the nearest ``dt`` multiple);
+passing ``interpolate=True`` (see ``lyapax.simulator.make_step_fn``,
+``dde_problem``, ``network_dde_problem``) switches to cubic Hermite
+interpolation over the ring buffer's stored (value, derivative) pairs,
+removing that rounding at the cost of storing/differentiating twice as
+much per buffer slot -- see notes/stepping_accuracy_review.md for the
+design and tradeoffs.
 
 Tangent propagation is ``jax.jvp``-based, not ``jax.jacfwd``-based like
 ``lyapax.core``: cost is O(k) forward passes per raw step (k = tracked
@@ -48,6 +54,7 @@ edge-aware ``coupling_fn`` signature, a separate design fork left for M5.
 """
 from __future__ import annotations
 
+import math
 import warnings
 from dataclasses import dataclass
 from typing import Callable
@@ -102,25 +109,36 @@ def tau_eff(tau_steps: int, dt: float) -> float:
     return tau_steps * dt
 
 
-def constant_history_buf0(cvar_state0: jnp.ndarray, horizon: int) -> jnp.ndarray:
+def constant_history_buf0(
+        cvar_state0: jnp.ndarray, horizon: int, interpolate: bool = False,
+) -> jnp.ndarray:
     """Initial ring buffer under the constant-history DDE convention: the
     coupling-variable state is assumed equal to ``cvar_state0`` for all
     ``t <= 0``.
 
     :param cvar_state0: ``(n_cvar, n_nodes)`` coupling-variable state at t=0.
-    :returns: ``(horizon, n_cvar, n_nodes)`` buf0, ready for
+    :param interpolate: build the ``(value, derivative)`` buffer shape
+        ``lyapax.simulator.make_step_fn(..., interpolate=True)`` expects.
+        The constant-history derivative is exactly 0 (a constant function
+        has zero derivative), not an approximation.
+    :returns: ``(horizon, n_cvar, n_nodes)`` buf0 (or ``(horizon, 2,
+        n_cvar, n_nodes)`` when ``interpolate=True``), ready for
         ``carry0 = (state0, buf0, jnp.int32(0), params)``.
     """
     cvar_state0 = jnp.asarray(cvar_state0)
-    return jnp.tile(cvar_state0[None, :, :], (horizon, 1, 1))
+    value = jnp.tile(cvar_state0[None, :, :], (horizon, 1, 1))
+    if not interpolate:
+        return value
+    return jnp.stack([value, jnp.zeros_like(value)], axis=1)
 
 
 def make_scalar_delayed_step_fn(
         rhs_delayed: DelayedRHS,
         m: int,
-        tau_steps: int,
+        tau_steps: int | float,
         dt: float,
         integrator: str | Callable = "heun",
+        interpolate: bool = False,
 ) -> CarryStepFn:
     """
     Build a carry-based step function for a simple, non-networked
@@ -145,10 +163,12 @@ def make_scalar_delayed_step_fn(
     :param rhs_delayed: ``(state_now, state_delayed) -> dstate``, both shape
         ``(m,)`` -- see ``DelayedRHS``.
     :param m: state dimension (e.g. 1 for a scalar DDE like Mackey-Glass).
-    :param tau_steps: integer delay in units of ``dt`` (see
-        ``resolve_tau_steps``).
+    :param tau_steps: delay in units of ``dt`` (see ``resolve_tau_steps``).
+        An integer when ``interpolate=False``; may be a non-integer float
+        when ``interpolate=True``.
     :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, ``"rk6"``, or a callable --
         see ``lyapax.simulator.make_step_fn``.
+    :param interpolate: see ``lyapax.simulator.make_step_fn``.
     """
     def dfun(state, coupling, params):
         return rhs_delayed(state[:, 0], coupling[:, 0])[:, None]
@@ -157,23 +177,40 @@ def make_scalar_delayed_step_fn(
         return cvar_state
 
     weights = jnp.ones((1, 1))
+    horizon = _resolve_horizon(tau_steps, interpolate)
     return make_step_fn(
-        dfun=dfun, weights=weights, has_delays=True, horizon=tau_steps + 1,
+        dfun=dfun, weights=weights, has_delays=True, horizon=horizon,
         n_nodes=1, cvar_indices=tuple(range(m)), dt=dt,
         coupling_fn=_identity_coupling, tau_steps=tau_steps, integrator=integrator,
+        interpolate=interpolate,
     )
 
 
-def scalar_delayed_history0(state0_now: jnp.ndarray, tau_steps: int):
+def _resolve_horizon(tau_steps: int | float, interpolate: bool) -> int:
+    """Ring-buffer depth needed for a given delay: ``tau_steps + 1`` for an
+    exact integer delay, or enough slots to always have both Hermite
+    interpolation anchors (``floor``/``ceil`` of a non-integer delay)
+    in-buffer when ``interpolate=True``."""
+    if interpolate:
+        return math.ceil(tau_steps) + 2
+    return tau_steps + 1
+
+
+def scalar_delayed_history0(
+        state0_now: jnp.ndarray, tau_steps: int | float, interpolate: bool = False,
+):
     """(state0, buf0) for make_scalar_delayed_step_fn, from a flat ``(m,)``
     initial condition, under the constant-history DDE convention -- the
     scalar-case counterpart to constant_history_buf0, hiding the
     ``(n_sv, n_nodes)``/``(horizon, n_cvar, n_nodes)`` reshaping the
     general (networked) path needs.
+
+    :param interpolate: see ``lyapax.simulator.make_step_fn``.
     """
     state0_now = jnp.asarray(state0_now)
     state0 = state0_now[:, None]  # (m, 1)
-    buf0 = constant_history_buf0(state0, tau_steps + 1)  # (horizon, m, 1)
+    horizon = _resolve_horizon(tau_steps, interpolate)
+    buf0 = constant_history_buf0(state0, horizon, interpolate=interpolate)
     return state0, buf0
 
 
@@ -192,17 +229,19 @@ class DDEProblem:
     :param buf0: ``(horizon, n_cvar, n_nodes)`` initial ring buffer.
     :param params: closed over for tangent propagation.
     :param dt: fixed step size.
-    :param tau_steps: integer delay in units of ``dt`` (see
-        ``resolve_tau_steps``) -- carried for reference/inspection
-        (``problem.tau_steps``, ``tau_eff(problem.tau_steps, problem.dt)``);
-        ``lyapunov_spectrum_dde`` itself only needs ``buf0``'s shape.
+    :param tau_steps: delay in units of ``dt`` (see ``resolve_tau_steps``)
+        -- carried for reference/inspection (``problem.tau_steps``,
+        ``tau_eff(problem.tau_steps, problem.dt)``); ``lyapunov_spectrum_dde``
+        itself only needs ``buf0``'s shape. An integer for the default
+        (grid-snapped) delay; a non-integer float when built with
+        ``interpolate=True``.
     """
     step_fn: CarryStepFn
     state0: jnp.ndarray
     buf0: jnp.ndarray
     params: dict
     dt: float
-    tau_steps: int
+    tau_steps: int | float
 
 
 def dde_problem(
@@ -212,6 +251,7 @@ def dde_problem(
         dt: float,
         history: jnp.ndarray | None = None,
         integrator: str | Callable = "heun",
+        interpolate: bool = False,
 ) -> DDEProblem:
     """
     Build a ``DDEProblem`` for a simple, non-networked scalar/vector
@@ -223,21 +263,27 @@ def dde_problem(
     :param rhs_delayed: ``(state_now, state_delayed) -> dstate``, both shape
         ``(m,)`` -- see ``DelayedRHS``.
     :param state0: ``(m,)`` initial state (pre-transient, pre-history).
-    :param tau: physical delay, rounded to an integer number of ``dt``
-        steps -- see ``resolve_tau_steps``.
+    :param tau: physical delay. Rounded to an integer number of ``dt``
+        steps (see ``resolve_tau_steps``) unless ``interpolate=True``, in
+        which case ``tau`` is used exactly (via Hermite-interpolated
+        history reads, see ``lyapax.simulator.make_step_fn``) -- no
+        rounding, no warning.
     :param dt: fixed step size.
-    :param history: optional ``(tau_steps + 1, m)`` initial ring buffer,
-        for a non-constant history. Defaults to the constant-history
-        convention (``state0`` held for all ``t <= 0``), see
-        ``scalar_delayed_history0``.
+    :param history: optional initial ring buffer (``(tau_steps + 1, m)``,
+        or the ``interpolate=True`` value/derivative shape -- see
+        ``scalar_delayed_history0``), for a non-constant history. Defaults
+        to the constant-history convention (``state0`` held for all
+        ``t <= 0``).
     :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, ``"rk6"``, or a callable --
         see ``lyapax.simulator.make_step_fn``.
+    :param interpolate: see ``lyapax.simulator.make_step_fn``.
     """
     state0 = jnp.asarray(state0)
     m = state0.shape[0]
-    tau_steps = resolve_tau_steps(tau, dt)
-    step_fn = make_scalar_delayed_step_fn(rhs_delayed, m, tau_steps, dt, integrator=integrator)
-    state0_2d, default_buf0 = scalar_delayed_history0(state0, tau_steps)
+    tau_steps = (tau / dt) if interpolate else resolve_tau_steps(tau, dt)
+    step_fn = make_scalar_delayed_step_fn(
+        rhs_delayed, m, tau_steps, dt, integrator=integrator, interpolate=interpolate)
+    state0_2d, default_buf0 = scalar_delayed_history0(state0, tau_steps, interpolate=interpolate)
     buf0 = jnp.asarray(history) if history is not None else default_buf0
     return DDEProblem(
         step_fn=step_fn, state0=state0_2d, buf0=buf0, params={}, dt=dt,
@@ -255,6 +301,7 @@ def network_dde_problem(
         tau: float | None = None,
         history: jnp.ndarray | None = None,
         integrator: str | Callable = "heun",
+        interpolate: bool = False,
 ) -> DDEProblem:
     """
     Build a ``DDEProblem`` for a coupled, uniformly-delayed network -- the
@@ -268,19 +315,24 @@ def network_dde_problem(
     ``lyapax.simulator.make_step_fn``'s docstring.
 
     :param dfun: ``(state, coupling, params) -> dstate``.
-    :param network: topology; exactly one of ``tau`` or an int
+    :param network: topology; exactly one of ``tau`` or
         ``network.delay_steps`` must give the uniform delay.
     :param coupling: ``(cvar_state, weights, params) -> coupling``.
     :param params: closed over for tangent propagation.
     :param state0: ``(n_sv, n_nodes)`` initial state.
     :param dt: fixed step size.
-    :param tau: physical delay, rounded via ``resolve_tau_steps``. Mutually
-        exclusive with an int ``network.delay_steps``.
-    :param history: optional ``(tau_steps + 1, n_cvar, n_nodes)`` initial
-        ring buffer. Defaults to the constant-history convention, see
-        ``constant_history_buf0``.
+    :param tau: physical delay. Rounded via ``resolve_tau_steps`` unless
+        ``interpolate=True`` (used exactly, via Hermite-interpolated
+        history reads). Mutually exclusive with ``network.delay_steps``.
+    :param history: optional initial ring buffer (``(tau_steps + 1,
+        n_cvar, n_nodes)``, or the ``interpolate=True`` value/derivative
+        shape -- see ``constant_history_buf0``). Defaults to the
+        constant-history convention.
     :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, ``"rk6"``, or a callable --
         see ``lyapax.simulator.make_step_fn``.
+    :param interpolate: see ``lyapax.simulator.make_step_fn``. When True,
+        ``tau`` (or ``network.delay_steps``) need not be an integer
+        number of ``dt`` steps.
     """
     if tau is not None:
         if network.delay_steps is not None:
@@ -288,28 +340,29 @@ def network_dde_problem(
                 "network_dde_problem: pass either tau or network.delay_steps, "
                 "not both."
             )
-        tau_steps = resolve_tau_steps(tau, dt)
-    elif isinstance(network.delay_steps, int):
+        tau_steps = (tau / dt) if interpolate else resolve_tau_steps(tau, dt)
+    elif isinstance(network.delay_steps, (int, float)):
         tau_steps = network.delay_steps
     else:
         raise ValueError(
             "network_dde_problem needs a single global delay: pass tau=... "
-            "or set network.delay_steps to an int (uniform tau_steps); a "
+            "or set network.delay_steps to a number (uniform tau_steps); a "
             "per-edge delay matrix is not supported with a custom coupling."
         )
 
     state0 = jnp.asarray(state0)
-    horizon = tau_steps + 1
+    horizon = _resolve_horizon(tau_steps, interpolate)
     step_fn = make_step_fn(
         dfun=dfun, weights=network.weights, has_delays=True, horizon=horizon,
         n_nodes=network.n_nodes, cvar_indices=network.cvar_indices, dt=dt,
         coupling_fn=coupling, tau_steps=tau_steps, integrator=integrator,
+        interpolate=interpolate,
     )
     if history is not None:
         buf0 = jnp.asarray(history)
     else:
         cvar_idx = jnp.array(network.cvar_indices, dtype=jnp.int32)
-        buf0 = constant_history_buf0(state0[cvar_idx], horizon)
+        buf0 = constant_history_buf0(state0[cvar_idx], horizon, interpolate=interpolate)
     return DDEProblem(
         step_fn=step_fn, state0=state0, buf0=buf0, params=params, dt=dt,
         tau_steps=tau_steps,

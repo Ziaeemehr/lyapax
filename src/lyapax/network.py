@@ -47,14 +47,16 @@ class Network:
     :param weights: ``(n_nodes, n_nodes)``, ``weights[tgt, src]``.
     :param cvar_indices: indices into the state-variable axis selecting
         which rows of ``state`` feed the coupling.
-    :param delay_steps: ``None`` for a zero-delay network, an ``int`` for a
-        single global delay (in units of ``dt``), or an ``(n_nodes, n_nodes)``
-        integer matrix for per-edge delays. Only relevant to the DDE path
+    :param delay_steps: ``None`` for a zero-delay network, a number (``int``,
+        or ``float`` when interpolating -- see
+        ``lyapax.simulator.make_step_fn``) for a single global delay (in
+        units of ``dt``), or an ``(n_nodes, n_nodes)`` integer matrix for
+        per-edge delays. Only relevant to the DDE path
         (``network_dde_problem``); ignored by ``network_step``.
     """
     weights: jnp.ndarray
     cvar_indices: tuple[int, ...]
-    delay_steps: int | jnp.ndarray | None = None
+    delay_steps: int | float | jnp.ndarray | None = None
 
     @property
     def n_nodes(self) -> int:

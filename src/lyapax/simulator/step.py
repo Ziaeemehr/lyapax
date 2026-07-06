@@ -123,6 +123,51 @@ def _read_uniform_delayed_cvar(
     return buf[(step - tau_steps) % horizon]
 
 
+def _write_ring_interp(
+        buf: jnp.ndarray, step: int, cvar_value: jnp.ndarray,
+        cvar_deriv: jnp.ndarray, horizon: int) -> jnp.ndarray:
+    """Interpolated-history counterpart of ``_write_ring``: ``buf`` gains a
+    length-2 axis (value, derivative) so later reads can reconstruct a
+    delayed value *between* grid points via Hermite interpolation instead
+    of only ever reading an exact stored sample -- see
+    ``_read_uniform_delayed_cvar_interp``. ``buf``: ``(horizon, 2, n_cvar,
+    n_nodes) -> updated buf``."""
+    idx = step % horizon
+    buf = buf.at[idx, 0].set(cvar_value)
+    return buf.at[idx, 1].set(cvar_deriv)
+
+
+def _read_uniform_delayed_cvar_interp(
+        buf: jnp.ndarray, step, tau_steps: float, horizon: int, dt: float) -> jnp.ndarray:
+    """Cubic Hermite-interpolated counterpart of
+    ``_read_uniform_delayed_cvar``: reconstructs the delayed
+    coupling-variable value at the exact (possibly non-integer) time
+    ``step*dt - tau_steps*dt``, from the stored value *and derivative* at
+    the two grid points bracketing it, rather than snapping ``tau_steps``
+    to the nearest integer. ``tau_steps`` is a plain (generally
+    non-integer) float here -- see notes/stepping_accuracy_review.md.
+
+    ``buf``: ``(horizon, 2, n_cvar, n_nodes)``, axis 1 = (value,
+    derivative), as written by ``_write_ring_interp``.
+    """
+    t_delayed = step - tau_steps
+    i0 = jnp.floor(t_delayed).astype(jnp.int32)
+    theta = t_delayed - i0
+    idx0 = i0 % horizon
+    idx1 = (i0 + 1) % horizon
+
+    y0, dy0 = buf[idx0, 0], buf[idx0, 1]
+    y1, dy1 = buf[idx1, 0], buf[idx1, 1]
+
+    # Standard cubic Hermite basis on theta in [0, 1); dy0/dy1 are d(y)/dt,
+    # so they're scaled by dt (the spacing between grid points i0 and i1).
+    h00 = 2 * theta ** 3 - 3 * theta ** 2 + 1
+    h10 = theta ** 3 - 2 * theta ** 2 + theta
+    h01 = -2 * theta ** 3 + 3 * theta ** 2
+    h11 = theta ** 3 - theta ** 2
+    return h00 * y0 + h10 * dt * dy0 + h01 * y1 + h11 * dt * dy1
+
+
 # ---------------------------------------------------------------------------
 # Integrators (pure JAX, traceable)
 # ---------------------------------------------------------------------------
@@ -183,7 +228,8 @@ def make_step_fn(
         coup_b: float = 0.0,
         integrator: str | Callable = "heun",
         coupling_fn: Callable | None = None,
-        tau_steps: int | None = None,
+        tau_steps: int | float | None = None,
+        interpolate: bool = False,
 ) -> Callable:
     """
     Returns step(carry, _) -> (new_carry, new_state).
@@ -212,20 +258,46 @@ def make_step_fn(
         the exact original (pre-M4) behavior.
     tau_steps : required alongside ``coupling_fn`` when ``has_delays=True``
         -- a single global delay (in steps), read via
-        ``_read_uniform_delayed_cvar`` (O(1) ring-buffer read). Per-edge
-        heterogeneous delays (the general ``delay_steps`` matrix) are not
-        supported together with a custom ``coupling_fn`` yet -- that
-        combination needs an edge-aware coupling_fn signature, left for a
-        future milestone (M5); use the legacy ``coupling_fn=None`` path
-        (which does support per-edge ``delay_steps``, just with the
-        hardcoded linear formula) until then.
+        ``_read_uniform_delayed_cvar`` (O(1) ring-buffer read) or, when
+        ``interpolate=True``, ``_read_uniform_delayed_cvar_interp`` (in
+        which case ``tau_steps`` need not be an integer -- see
+        ``interpolate``). Per-edge heterogeneous delays (the general
+        ``delay_steps`` matrix) are not supported together with a custom
+        ``coupling_fn`` yet -- that combination needs an edge-aware
+        coupling_fn signature, left for a future milestone (M5); use the
+        legacy ``coupling_fn=None`` path (which does support per-edge
+        ``delay_steps``, just with the hardcoded linear formula) until
+        then.
+    interpolate : reconstruct the delayed coupling-variable value via cubic
+        Hermite interpolation (using the stored value *and* derivative at
+        the two grid points bracketing the delayed time) instead of
+        snapping to the nearest stored grid sample -- see
+        notes/stepping_accuracy_review.md. Requires ``has_delays=True``,
+        ``coupling_fn`` given, and ``tau_steps`` given (the uniform-delay
+        path only; not supported with the legacy per-edge ``delay_steps``
+        path). ``tau_steps`` may then be a non-integer float: the physical
+        delay no longer needs rounding to a whole number of ``dt`` steps.
+        Costs one extra ``dfun`` evaluation per step (to compute the
+        derivative to store) and doubles ``buf``'s per-slot size (value
+        and derivative, instead of just value).
     """
+    if interpolate and not (has_delays and coupling_fn is not None and tau_steps is not None):
+        raise ValueError(
+            "interpolate=True requires has_delays=True, a coupling_fn, and "
+            "tau_steps (the uniform-delay path) -- interpolated reads are "
+            "not supported with has_delays=False or the legacy per-edge "
+            "delay_steps path."
+        )
+
     cvar_idx = jnp.array(list(cvar_indices), dtype=jnp.int32)
     integrate = _STEP_INTEGRATORS[integrator] if isinstance(integrator, str) else integrator
 
     if coupling_fn is not None:
         def _coupling(buf, step, state, params):
-            if has_delays:
+            if has_delays and interpolate:
+                cvar_state = _read_uniform_delayed_cvar_interp(
+                    buf, step, tau_steps, horizon, dt)
+            elif has_delays:
                 cvar_state = _read_uniform_delayed_cvar(buf, step, tau_steps, horizon)
             else:
                 cvar_state = state[cvar_idx]
@@ -245,7 +317,15 @@ def make_step_fn(
         coup = _coupling(buf, t, state, params)
         new_state = integrate(state, dfun, coup, dt, params)
 
-        if has_delays:
+        if has_delays and interpolate:
+            # coup is reused (rather than re-reading the buffer at the new
+            # time, which would need the coupling this same write is
+            # producing) as the derivative estimate's coupling input --
+            # the same "coupling held fixed across the step" convention
+            # _heun/_rk4/_rk6 already use for the state's own integration.
+            new_deriv = dfun(new_state, coup, params)[cvar_idx]
+            new_buf = _write_ring_interp(buf, t, new_state[cvar_idx], new_deriv, horizon)
+        elif has_delays:
             new_buf = _write_ring(buf, t, new_state[cvar_idx], horizon)
         else:
             new_buf = buf
