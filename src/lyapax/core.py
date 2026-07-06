@@ -26,10 +26,13 @@ how many are actually tracked).
 from __future__ import annotations
 
 import warnings
+from dataclasses import dataclass
 from typing import Callable, NamedTuple
 
 import jax
 import jax.numpy as jnp
+
+from .integrators import ode_step
 
 StepFn = Callable[[jnp.ndarray], jnp.ndarray]
 
@@ -119,11 +122,52 @@ def _check_finite(result: LyapunovResult) -> None:
         )
 
 
-def lyapunov_spectrum(
-        step_fn: StepFn,
+@dataclass(frozen=True)
+class ODEProblem:
+    """Owns the ``(step_fn, state0, dt)`` triple that ``lyapunov_spectrum``
+    otherwise asks the caller to keep in sync by hand -- in particular, the
+    ``dt`` baked into ``step_fn`` (e.g. via ``ode_step``) and the ``dt``
+    passed separately to ``lyapunov_spectrum`` must agree, and nothing
+    checks that when they're two independent arguments. Build one with
+    ``ode_problem`` (plain ODE) or ``network_problem`` (coupled network),
+    or construct directly if you already have a step_fn.
+
+    :param step_fn: one fixed-time-step update, ``state (d,) -> new_state (d,)``.
+    :param state0: ``(d,)`` initial state (pre-transient).
+    :param dt: time represented by one call to ``step_fn``.
+    """
+    step_fn: StepFn
+    state0: jnp.ndarray
+    dt: float
+
+
+def ode_problem(
+        rhs,
         state0: jnp.ndarray,
         dt: float,
-        n_steps: int,
+        integrator: str | Callable = "rk4",
+) -> ODEProblem:
+    """
+    Build an ``ODEProblem`` for a plain (uncoupled) ODE -- bundles
+    ``ode_step``'s ``step_fn`` together with ``state0`` and ``dt`` so
+    ``lyapunov_spectrum(problem, n_steps=...)`` never needs ``dt`` (or
+    ``state0``) passed a second time.
+
+    :param rhs: right-hand side, ``state (d,) -> dstate (d,)``.
+    :param state0: ``(d,)`` initial state (pre-transient).
+    :param dt: fixed step size.
+    :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, or a callable
+        ``(rhs, dt) -> step_fn`` -- see ``lyapax.integrators.ode_step``.
+    """
+    step_fn = ode_step(rhs, dt, integrator=integrator)
+    return ODEProblem(step_fn=step_fn, state0=jnp.asarray(state0), dt=dt)
+
+
+def lyapunov_spectrum(
+        step_fn_or_problem: StepFn | ODEProblem,
+        state0: jnp.ndarray | int | None = None,
+        dt: float | None = None,
+        n_steps: int | None = None,
         k: int | None = None,
         renorm_every: int = 1,
         t_transient: float = 0.0,
@@ -136,12 +180,20 @@ def lyapunov_spectrum(
 
     Parameters
     ----------
-    step_fn : one fixed-time-step (or one map-iterate) update,
-        ``state (d,) -> new_state (d,)``. Must be a pure, differentiable
+    step_fn_or_problem : either an ``ODEProblem`` (from ``ode_problem`` /
+        ``network_problem``) -- in which case ``state0`` and ``dt`` are
+        read off it and the second positional argument is ``n_steps``
+        (``lyapunov_spectrum(problem, n_steps)`` or
+        ``lyapunov_spectrum(problem, n_steps=...)``) -- or a plain
+        ``step_fn``, ``state (d,) -> new_state (d,)``, in which case
+        ``state0``, ``dt``, ``n_steps`` are all given explicitly (the
+        original, lower-level call form). Must be a pure, differentiable
         JAX function of ``state`` alone — close over any parameters.
-    state0 : (d,) initial state (pre-transient).
+    state0 : (d,) initial state (pre-transient). Ignored (and may be
+        omitted) when an ``ODEProblem`` is passed.
     dt : time represented by one call to ``step_fn``. For discrete maps,
-        pass ``dt=1.0`` and interpret the exponents as per-iterate.
+        pass ``dt=1.0`` and interpret the exponents as per-iterate. Ignored
+        when an ``ODEProblem`` is passed.
     n_steps : number of steps to run *after* the transient. Must be a
         multiple of ``renorm_every``.
     k : number of leading exponents to track (``k <= d``). Defaults to the
@@ -166,6 +218,25 @@ def lyapunov_spectrum(
     -------
     LyapunovResult
     """
+    if isinstance(step_fn_or_problem, ODEProblem):
+        problem = step_fn_or_problem
+        if n_steps is None:
+            if state0 is None:
+                raise TypeError(
+                    "lyapunov_spectrum(problem, ...) requires n_steps."
+                )
+            n_steps = state0  # lyapunov_spectrum(problem, n_steps) form
+        step_fn = problem.step_fn
+        state0, dt = problem.state0, problem.dt
+    else:
+        step_fn = step_fn_or_problem
+        if state0 is None or dt is None or n_steps is None:
+            raise TypeError(
+                "lyapunov_spectrum(step_fn, state0, dt, n_steps, ...) "
+                "requires state0, dt, and n_steps when step_fn is a plain "
+                "step function."
+            )
+
     state0 = jnp.asarray(state0)
     _warn_if_not_x64(state0)
     d = state0.shape[0]

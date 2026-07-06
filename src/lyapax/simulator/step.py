@@ -136,6 +136,24 @@ def _heun(state, dfun, coupling, dt, params):
     return state + 0.5 * dt * (k1 + k2)
 
 
+def _rk4(state, dfun, coupling, dt, params):
+    """Classic RK4, with ``coupling`` held fixed across the four stages
+    (same simplifying convention ``_heun`` already uses: coupling is read
+    once per step, not re-evaluated at the RK substeps)."""
+    k1 = dfun(state, coupling, params)
+    k2 = dfun(state + 0.5 * dt * k1, coupling, params)
+    k3 = dfun(state + 0.5 * dt * k2, coupling, params)
+    k4 = dfun(state + dt * k3, coupling, params)
+    return state + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+
+
+_STEP_INTEGRATORS: dict[str, Callable] = {
+    "euler": _euler,
+    "heun": _heun,
+    "rk4": _rk4,
+}
+
+
 # ---------------------------------------------------------------------------
 # step(carry, _) factory
 # ---------------------------------------------------------------------------
@@ -152,7 +170,7 @@ def make_step_fn(
         G_default: float = 1.0,
         coup_a: float = 1.0,
         coup_b: float = 0.0,
-        use_heun: bool = True,
+        integrator: str | Callable = "heun",
         coupling_fn: Callable | None = None,
         tau_steps: int | None = None,
 ) -> Callable:
@@ -168,6 +186,10 @@ def make_step_fn(
     ``buf`` is a no-op array when ``has_delays=False`` — the ODE and DDE
     cases share this exact function; only the coupling branch differs.
 
+    integrator : ``"euler"``, ``"heun"``, ``"rk4"``, or a callable
+        ``(state, dfun, coupling, dt, params) -> new_state``. ``coupling``
+        is read once per step and held fixed across any internal stages
+        (see ``_rk4``'s docstring).
     coupling_fn : optional ``lyapax.coupling``-style plain callable,
         ``(cvar_state, weights, params) -> coupling`` (see
         ``lyapax.coupling.CouplingFn``). When given, replaces the
@@ -188,7 +210,7 @@ def make_step_fn(
         hardcoded linear formula) until then.
     """
     cvar_idx = jnp.array(list(cvar_indices), dtype=jnp.int32)
-    integrate = _heun if use_heun else _euler
+    integrate = _STEP_INTEGRATORS[integrator] if isinstance(integrator, str) else integrator
 
     if coupling_fn is not None:
         def _coupling(buf, step, state, params):

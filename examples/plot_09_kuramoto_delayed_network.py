@@ -107,7 +107,7 @@ for G in G_values:
     step_delayed = make_step_fn(
         dfun=dfun, weights=weights, has_delays=True, horizon=horizon,
         n_nodes=n_nodes, cvar_indices=model.cvar_indices, dt=dt,
-        coupling_fn=kuramoto_coupling(alpha=0.0), tau_steps=tau_steps, use_heun=True,
+        coupling_fn=kuramoto_coupling(alpha=0.0), tau_steps=tau_steps, integrator="heun",
     )
     state0_2d = state0.reshape(1, n_nodes)
     buf0 = constant_history_buf0(state0_2d, horizon)

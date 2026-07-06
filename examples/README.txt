@@ -15,9 +15,12 @@ current implementation, delayed (DDE) networks -- both a per-edge linear
 delay sweep against a closed-form (Lambert W) reference and a delayed
 Kuramoto network showing what transmission delay does to synchronization
 (Tier 4-5) -- a matrix-free (jvp/vmap) tangent-propagation speedup on
-a large network, and a jax.vmap parameter-sweep helper (one batched call
+a large network, a jax.vmap parameter-sweep helper (one batched call
 reproducing an earlier Python-loop G-sweep, faster and bit-for-bit
-identical).
+identical), and the public front door (``ode_step``, ``Network``/
+``network_step``, ``dde_problem``/``network_dde_problem``) that gives
+plain, coupled, and delayed systems the same dynamics/network/coupling/
+integrator construction recipe.
 
 New capability -> new demo: as engine features land (a new coupling kind, a
 new delay structure, a performance change, ...), add a runnable example

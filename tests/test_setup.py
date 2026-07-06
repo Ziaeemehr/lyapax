@@ -54,7 +54,7 @@ def test_uncoupled_linear_decay_matches_analytic_solution():
         dfun=dfun, weights=weights, delay_steps=delay_steps,
         has_delays=False, horizon=1, n_nodes=n_nodes,
         cvar_indices=model.cvar_indices, dt=dt,
-        G_default=0.0, coup_a=1.0, coup_b=0.0, use_heun=True,
+        G_default=0.0, coup_a=1.0, coup_b=0.0, integrator="heun",
     )
 
     state0 = jnp.array([[1.0]])  # (n_sv, n_nodes)
@@ -94,7 +94,7 @@ def test_delayed_network_smoke():
         dfun=dfun, weights=weights, delay_steps=delay_steps,
         has_delays=True, horizon=horizon, n_nodes=n_nodes,
         cvar_indices=model.cvar_indices, dt=dt,
-        G_default=0.5, coup_a=1.0, coup_b=0.0, use_heun=True,
+        G_default=0.5, coup_a=1.0, coup_b=0.0, integrator="heun",
     )
 
     state0 = jnp.ones((1, n_nodes))

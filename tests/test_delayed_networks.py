@@ -75,7 +75,7 @@ def test_per_edge_delay_near_zero_recovers_m3_eigenvalues():
     step_dde = make_step_fn(
         dfun=dfun, weights=jnp.array(weights), has_delays=True, horizon=horizon,
         n_nodes=4, cvar_indices=model.cvar_indices, dt=dt, delay_steps=delay_steps,
-        G_default=G, coup_a=1.0, coup_b=0.0, use_heun=True,
+        G_default=G, coup_a=1.0, coup_b=0.0, integrator="heun",
     )
     buf0 = constant_history_buf0(state0, horizon)
     result_dde = lyapunov_spectrum_dde(
@@ -115,7 +115,7 @@ def test_two_node_symmetric_delayed_network_matches_lambert_w():
     step_fn = make_step_fn(
         dfun=dfun, weights=weights, has_delays=True, horizon=horizon, n_nodes=2,
         cvar_indices=model.cvar_indices, dt=dt, delay_steps=delay_steps,
-        G_default=G, coup_a=1.0, coup_b=0.0, use_heun=True,
+        G_default=G, coup_a=1.0, coup_b=0.0, integrator="heun",
     )
     state0 = jnp.array([[0.3, -0.2]])
     buf0 = constant_history_buf0(state0, horizon)

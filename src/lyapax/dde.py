@@ -49,12 +49,14 @@ edge-aware ``coupling_fn`` signature, a separate design fork left for M5.
 from __future__ import annotations
 
 import warnings
+from dataclasses import dataclass
 from typing import Callable
 
 import jax
 import jax.numpy as jnp
 
 from .core import LyapunovResult, _check_finite, _run_renorm_scan, _warn_if_not_x64
+from .network import Network
 from .simulator import make_step_fn
 
 CarryStepFn = Callable
@@ -118,7 +120,7 @@ def make_scalar_delayed_step_fn(
         m: int,
         tau_steps: int,
         dt: float,
-        use_heun: bool = True,
+        integrator: str | Callable = "heun",
 ) -> CarryStepFn:
     """
     Build a carry-based step function for a simple, non-networked
@@ -145,6 +147,8 @@ def make_scalar_delayed_step_fn(
     :param m: state dimension (e.g. 1 for a scalar DDE like Mackey-Glass).
     :param tau_steps: integer delay in units of ``dt`` (see
         ``resolve_tau_steps``).
+    :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, or a callable --
+        see ``lyapax.simulator.make_step_fn``.
     """
     def dfun(state, coupling, params):
         return rhs_delayed(state[:, 0], coupling[:, 0])[:, None]
@@ -156,7 +160,7 @@ def make_scalar_delayed_step_fn(
     return make_step_fn(
         dfun=dfun, weights=weights, has_delays=True, horizon=tau_steps + 1,
         n_nodes=1, cvar_indices=tuple(range(m)), dt=dt,
-        coupling_fn=_identity_coupling, tau_steps=tau_steps, use_heun=use_heun,
+        coupling_fn=_identity_coupling, tau_steps=tau_steps, integrator=integrator,
     )
 
 
@@ -173,13 +177,152 @@ def scalar_delayed_history0(state0_now: jnp.ndarray, tau_steps: int):
     return state0, buf0
 
 
-def lyapunov_spectrum_dde(
-        step_fn: CarryStepFn,
+@dataclass(frozen=True)
+class DDEProblem:
+    """Owns the carry-style plumbing (``step_fn``, ring buffer, delay
+    length) that ``lyapunov_spectrum_dde`` otherwise asks the caller to
+    assemble and pass by hand -- ``buf0``, ``tau_steps``, and the carry
+    layout become properties of one object instead of four separate
+    positional arguments. Build one with ``dde_problem`` (single/scalar
+    DDE) or ``network_dde_problem`` (coupled, uniformly-delayed network),
+    or construct directly if you already have a carry ``step_fn``.
+
+    :param step_fn: see ``lyapunov_spectrum_dde``.
+    :param state0: ``(n_sv, n_nodes)`` initial state (pre-transient).
+    :param buf0: ``(horizon, n_cvar, n_nodes)`` initial ring buffer.
+    :param params: closed over for tangent propagation.
+    :param dt: fixed step size.
+    :param tau_steps: integer delay in units of ``dt`` (see
+        ``resolve_tau_steps``) -- carried for reference/inspection
+        (``problem.tau_steps``, ``tau_eff(problem.tau_steps, problem.dt)``);
+        ``lyapunov_spectrum_dde`` itself only needs ``buf0``'s shape.
+    """
+    step_fn: CarryStepFn
+    state0: jnp.ndarray
+    buf0: jnp.ndarray
+    params: dict
+    dt: float
+    tau_steps: int
+
+
+def dde_problem(
+        rhs_delayed: DelayedRHS,
         state0: jnp.ndarray,
-        buf0: jnp.ndarray,
-        params: dict,
+        tau: float,
         dt: float,
-        n_steps: int,
+        history: jnp.ndarray | None = None,
+        integrator: str | Callable = "heun",
+) -> DDEProblem:
+    """
+    Build a ``DDEProblem`` for a simple, non-networked scalar/vector
+    fixed-delay DDE directly from ``rhs_delayed`` -- the parallel-to-ODE
+    front door for ``lyapunov_spectrum_dde``, hiding the ring-buffer/carry
+    construction that ``make_scalar_delayed_step_fn`` +
+    ``scalar_delayed_history0`` otherwise ask the caller to wire up by hand.
+
+    :param rhs_delayed: ``(state_now, state_delayed) -> dstate``, both shape
+        ``(m,)`` -- see ``DelayedRHS``.
+    :param state0: ``(m,)`` initial state (pre-transient, pre-history).
+    :param tau: physical delay, rounded to an integer number of ``dt``
+        steps -- see ``resolve_tau_steps``.
+    :param dt: fixed step size.
+    :param history: optional ``(tau_steps + 1, m)`` initial ring buffer,
+        for a non-constant history. Defaults to the constant-history
+        convention (``state0`` held for all ``t <= 0``), see
+        ``scalar_delayed_history0``.
+    :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, or a callable --
+        see ``lyapax.simulator.make_step_fn``.
+    """
+    state0 = jnp.asarray(state0)
+    m = state0.shape[0]
+    tau_steps = resolve_tau_steps(tau, dt)
+    step_fn = make_scalar_delayed_step_fn(rhs_delayed, m, tau_steps, dt, integrator=integrator)
+    state0_2d, default_buf0 = scalar_delayed_history0(state0, tau_steps)
+    buf0 = jnp.asarray(history) if history is not None else default_buf0
+    return DDEProblem(
+        step_fn=step_fn, state0=state0_2d, buf0=buf0, params={}, dt=dt,
+        tau_steps=tau_steps,
+    )
+
+
+def network_dde_problem(
+        dfun: Callable,
+        network: Network,
+        coupling: Callable,
+        params: dict,
+        state0: jnp.ndarray,
+        dt: float,
+        tau: float | None = None,
+        history: jnp.ndarray | None = None,
+        integrator: str | Callable = "heun",
+) -> DDEProblem:
+    """
+    Build a ``DDEProblem`` for a coupled, uniformly-delayed network -- the
+    DDE counterpart of ``lyapax.network.network_step`` (see that function
+    and ``Network`` for the topology/coupling/integrator split this keeps
+    parallel between the ODE and DDE construction paths).
+
+    Only a single global delay is supported (a uniform ``tau_steps`` read
+    via one ring-buffer lookup per node) -- per-edge heterogeneous delays
+    combined with a custom ``coupling`` callable are not yet supported, see
+    ``lyapax.simulator.make_step_fn``'s docstring.
+
+    :param dfun: ``(state, coupling, params) -> dstate``.
+    :param network: topology; exactly one of ``tau`` or an int
+        ``network.delay_steps`` must give the uniform delay.
+    :param coupling: ``(cvar_state, weights, params) -> coupling``.
+    :param params: closed over for tangent propagation.
+    :param state0: ``(n_sv, n_nodes)`` initial state.
+    :param dt: fixed step size.
+    :param tau: physical delay, rounded via ``resolve_tau_steps``. Mutually
+        exclusive with an int ``network.delay_steps``.
+    :param history: optional ``(tau_steps + 1, n_cvar, n_nodes)`` initial
+        ring buffer. Defaults to the constant-history convention, see
+        ``constant_history_buf0``.
+    :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, or a callable --
+        see ``lyapax.simulator.make_step_fn``.
+    """
+    if tau is not None:
+        if network.delay_steps is not None:
+            raise ValueError(
+                "network_dde_problem: pass either tau or network.delay_steps, "
+                "not both."
+            )
+        tau_steps = resolve_tau_steps(tau, dt)
+    elif isinstance(network.delay_steps, int):
+        tau_steps = network.delay_steps
+    else:
+        raise ValueError(
+            "network_dde_problem needs a single global delay: pass tau=... "
+            "or set network.delay_steps to an int (uniform tau_steps); a "
+            "per-edge delay matrix is not supported with a custom coupling."
+        )
+
+    state0 = jnp.asarray(state0)
+    horizon = tau_steps + 1
+    step_fn = make_step_fn(
+        dfun=dfun, weights=network.weights, has_delays=True, horizon=horizon,
+        n_nodes=network.n_nodes, cvar_indices=network.cvar_indices, dt=dt,
+        coupling_fn=coupling, tau_steps=tau_steps, integrator=integrator,
+    )
+    if history is not None:
+        buf0 = jnp.asarray(history)
+    else:
+        cvar_idx = jnp.array(network.cvar_indices, dtype=jnp.int32)
+        buf0 = constant_history_buf0(state0[cvar_idx], horizon)
+    return DDEProblem(
+        step_fn=step_fn, state0=state0, buf0=buf0, params=params, dt=dt,
+        tau_steps=tau_steps,
+    )
+
+
+def lyapunov_spectrum_dde(
+        step_fn_or_problem: CarryStepFn | DDEProblem,
+        state0: jnp.ndarray | int | None = None,
+        buf0: jnp.ndarray | None = None,
+        params: dict | None = None,
+        dt: float | None = None,
+        n_steps: int | None = None,
         k: int | None = None,
         renorm_every: int = 1,
         t_transient: float = 0.0,
@@ -187,21 +330,27 @@ def lyapunov_spectrum_dde(
         check_finite: bool = False,
 ) -> LyapunovResult:
     """
-    Compute the (partial or full) Lyapunov spectrum of a fixed-delay DDE
-    given as a vendored-style carry step function, via the Benettin/QR
-    method generalized to a ``(state, buf)`` tangent pair (see module
-    docstring).
+    Compute the (partial or full) Lyapunov spectrum of a fixed-delay DDE,
+    via the Benettin/QR method generalized to a ``(state, buf)`` tangent
+    pair (see module docstring).
 
     Parameters
     ----------
-    step_fn : ``step(carry, _) -> (new_carry, new_state)``, carry =
-        ``(state, buf, t, params)`` -- from
-        ``lyapax.simulator.make_step_fn(..., coupling_fn=..., tau_steps=...)``.
-    state0 : (n_sv, n_nodes) initial state (pre-transient).
+    step_fn_or_problem : either a ``DDEProblem`` (from ``dde_problem`` /
+        ``network_dde_problem``) -- in which case ``state0``, ``buf0``,
+        ``params``, and ``dt`` are read off it and the second positional
+        argument is ``n_steps`` (``lyapunov_spectrum_dde(problem, n_steps)``
+        or ``lyapunov_spectrum_dde(problem, n_steps=...)``) -- or a plain
+        carry ``step_fn``, ``step(carry, _) -> (new_carry, new_state)``,
+        carry = ``(state, buf, t, params)``, in which case ``state0``,
+        ``buf0``, ``params``, ``dt``, ``n_steps`` are all given explicitly
+        (the original, lower-level call form).
+    state0 : (n_sv, n_nodes) initial state (pre-transient). Ignored (and
+        may be omitted) when a ``DDEProblem`` is passed.
     buf0 : (horizon, n_cvar, n_nodes) initial ring buffer (see
-        ``constant_history_buf0``).
+        ``constant_history_buf0``). Ignored when a ``DDEProblem`` is passed.
     params : closed over for tangent propagation (not differentiated --
-        only ``state``/``buf`` are).
+        only ``state``/``buf`` are). Ignored when a ``DDEProblem`` is passed.
     dt, n_steps, renorm_every, seed : see ``lyapax.core.lyapunov_spectrum``
         (same meaning).
     k : number of leading exponents to track. Defaults to the *full*
@@ -230,6 +379,25 @@ def lyapunov_spectrum_dde(
     -------
     LyapunovResult
     """
+    if isinstance(step_fn_or_problem, DDEProblem):
+        problem = step_fn_or_problem
+        if n_steps is None:
+            if state0 is None:
+                raise TypeError(
+                    "lyapunov_spectrum_dde(problem, ...) requires n_steps."
+                )
+            n_steps = state0  # lyapunov_spectrum_dde(problem, n_steps) form
+        step_fn = problem.step_fn
+        state0, buf0, params, dt = problem.state0, problem.buf0, problem.params, problem.dt
+    else:
+        step_fn = step_fn_or_problem
+        if n_steps is None or state0 is None or buf0 is None or params is None or dt is None:
+            raise TypeError(
+                "lyapunov_spectrum_dde(step_fn, state0, buf0, params, dt, "
+                "n_steps, ...) requires all of state0, buf0, params, dt, "
+                "n_steps when step_fn is a plain carry step function."
+            )
+
     state0 = jnp.asarray(state0)
     buf0 = jnp.asarray(buf0)
     _warn_if_not_x64(state0)

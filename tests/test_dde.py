@@ -247,7 +247,7 @@ def test_delayed_network_benchmark_scale():
     step_fn = make_step_fn(
         dfun=dfun, weights=weights, has_delays=True, horizon=horizon,
         n_nodes=n_nodes, cvar_indices=model.cvar_indices, dt=dt,
-        coupling_fn=kuramoto_coupling(alpha=0.0), tau_steps=tau_steps, use_heun=True,
+        coupling_fn=kuramoto_coupling(alpha=0.0), tau_steps=tau_steps, integrator="heun",
     )
     state0 = jnp.linspace(0.0, 2 * jnp.pi, n_nodes, endpoint=False).reshape(1, n_nodes)
     buf0 = constant_history_buf0(state0, horizon)

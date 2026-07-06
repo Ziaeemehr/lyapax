@@ -92,7 +92,7 @@ for tau in tau_values:
     step_fn = make_step_fn(
         dfun=dfun, weights=weights, has_delays=True, horizon=horizon, n_nodes=2,
         cvar_indices=model.cvar_indices, dt=dt, delay_steps=delay_steps,
-        G_default=G, coup_a=1.0, coup_b=0.0, use_heun=True,
+        G_default=G, coup_a=1.0, coup_b=0.0, integrator="heun",
     )
     state0 = jnp.array([[0.3, -0.2]])
     buf0 = constant_history_buf0(state0, horizon)
