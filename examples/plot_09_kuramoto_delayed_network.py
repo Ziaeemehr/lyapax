@@ -27,16 +27,22 @@ parameters, not a foregone conclusion -- read the printed/plotted
 ``lambda_2`` curves rather than assuming the story below.
 
 **The machinery.** Both runs share the same ``ModelSpec``/dfun
-(``"omega + c"``) and ``kuramoto_coupling`` callable as ``plot_05``,
-because ``lyapax.coupling`` builders are plain callables with no delay
-opinion baked in -- the same coupling function works whether the state it
-receives is instantaneous or delayed. The delay-0 run goes through
-``lyapax.network.make_network_step_fn`` + ``lyapax.core.lyapunov_spectrum``
-exactly as in ``plot_05``; the delayed run goes through
-``lyapax.simulator.make_step_fn(..., coupling_fn=..., tau_steps=...)`` (the
-*uniform*-delay branch -- a single global ``tau`` shared by every edge, not
-the per-edge ``delay_steps`` matrix from ``plot_08_delayed_coupling.py``)
-+ ``lyapax.dde.lyapunov_spectrum_dde``.
+(``"omega + c"``) and ``kuramoto_coupling`` callable as ``plot_05``, wired
+through one shared ``lyapax.Network`` topology object -- ``lyapax.coupling``
+builders are plain callables with no delay opinion baked in, so the same
+coupling function works whether the state it receives is instantaneous or
+delayed. The delay-0 run goes through ``lyapax.network_problem`` +
+``lyapax.lyapunov_spectrum``, computing exactly what ``plot_05`` computes
+via its lower-level ``make_network_step_fn`` call; the delayed run goes
+through ``lyapax.network_dde_problem(..., tau=tau)`` (the *uniform*-delay
+branch -- a single global ``tau`` shared by every edge, not the per-edge
+``delay_steps`` matrix from ``plot_08_delayed_coupling.py``) +
+``lyapax.lyapunov_spectrum_dde``. Both problem constructors are thin
+wrappers that build the ring buffer and resolve ``tau`` to whole ``dt``
+steps for you -- see ``plot_12_public_api_overview.py`` for the general
+problem-object recipe and ``notes/api_design_review.md`` for why it
+replaced the raw ``make_step_fn``/``constant_history_buf0`` call this
+script used to make directly.
 
 Note: like ``plot_05``, this sweeps ``G`` with a Python loop, one
 ``lyapunov_spectrum[_dde]`` call per point (see
@@ -59,11 +65,9 @@ import jax.numpy as jnp
 
 jax.config.update("jax_enable_x64", True)
 
-from lyapax.core import lyapunov_spectrum
-from lyapax.dde import lyapunov_spectrum_dde, constant_history_buf0, resolve_tau_steps
+import lyapax
 from lyapax.coupling import kuramoto_coupling
-from lyapax.network import make_network_step_fn
-from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun, make_step_fn
+from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
 
 # %%
 n_nodes = 6
@@ -78,11 +82,10 @@ model = ModelSpec(
     dfun_str={"theta": "omega + c"},
 )
 dfun = build_jax_dfun(model)
+network = lyapax.Network(weights=weights, cvar_indices=model.cvar_indices)
 
 dt = 1e-2
 tau = 0.3
-tau_steps = resolve_tau_steps(tau, dt)
-horizon = tau_steps + 1
 state0 = jnp.linspace(0.0, 2 * jnp.pi, n_nodes, endpoint=False)
 
 G_values = np.linspace(0.0, 4.0, 9)
@@ -92,28 +95,24 @@ t0 = time.perf_counter()
 for G in G_values:
     params = {"omega": omega, "G": float(G)}
 
-    # -- zero delay: exactly plot_05's engine --
-    step_nodelay = make_network_step_fn(
-        dfun, weights, model.cvar_indices, params, dt,
-        coupling_fn=kuramoto_coupling(alpha=0.0),
+    # -- zero delay: exactly plot_05's engine, via the network_problem front door --
+    problem_nodelay = lyapax.network_problem(
+        dfun, network, kuramoto_coupling(alpha=0.0),
+        params=params, state0=state0, dt=dt,
     )
-    result_nodelay = lyapunov_spectrum(
-        step_nodelay, state0=state0, dt=dt, n_steps=4_000, renorm_every=10,
-        k=2, t_transient=20.0,
+    result_nodelay = lyapax.lyapunov_spectrum(
+        problem_nodelay, n_steps=4_000, renorm_every=10, k=2, t_transient=20.0,
     )
     lambda2_nodelay.append(float(result_nodelay.exponents[1]))
 
-    # -- uniform delay tau=0.3: the DDE engine --
-    step_delayed = make_step_fn(
-        dfun=dfun, weights=weights, has_delays=True, horizon=horizon,
-        n_nodes=n_nodes, cvar_indices=model.cvar_indices, dt=dt,
-        coupling_fn=kuramoto_coupling(alpha=0.0), tau_steps=tau_steps, integrator="heun",
+    # -- uniform delay tau=0.3: the DDE engine, via network_dde_problem --
+    problem_delayed = lyapax.network_dde_problem(
+        dfun, network, kuramoto_coupling(alpha=0.0),
+        params=params, state0=state0.reshape(1, n_nodes), dt=dt, tau=tau,
+        integrator="heun",
     )
-    state0_2d = state0.reshape(1, n_nodes)
-    buf0 = constant_history_buf0(state0_2d, horizon)
-    result_delayed = lyapunov_spectrum_dde(
-        step_delayed, state0=state0_2d, buf0=buf0, params=params, dt=dt,
-        n_steps=4_000, k=2, renorm_every=10, t_transient=20.0,
+    result_delayed = lyapax.lyapunov_spectrum_dde(
+        problem_delayed, n_steps=4_000, k=2, renorm_every=10, t_transient=20.0,
     )
     lambda2_delayed.append(float(result_delayed.exponents[1]))
 elapsed = time.perf_counter() - t0
