@@ -8,8 +8,8 @@ see ``docs/``).
 
 Demos cover: inspecting a model's raw simulated time series as a sanity
 check before computing exponents (single systems and coupled networks
-alike), benchmark systems with a known answer (Tiers 0-2 in
-notes/validation_systems.md), coupled networks (Tier 3), the extensibility
+alike), benchmark systems with a known answer (Tiers 0-2 of
+:doc:`/background/validation`), coupled networks (Tier 3), the extensibility
 of custom coupling functions, a speed/accuracy characterization of the
 current implementation (including RK4 vs RK6 convergence-order slopes),
 delayed (DDE) networks -- both a per-edge linear

@@ -1,4 +1,4 @@
-"""Fixed-delay DDE Lyapunov engine, on top of the vendored ring buffer (M4).
+"""Fixed-delay DDE Lyapunov engine, on top of the vendored ring buffer.
 
 Reuses the vendored ring-buffer simulator (``lyapax.simulator.step``) as-is
 rather than a second, parallel history mechanism: the genuinely missing
@@ -25,19 +25,15 @@ passing ``interpolate=True`` (see ``lyapax.simulator.make_step_fn``,
 ``dde_problem``, ``network_dde_problem``) switches to cubic Hermite
 interpolation over the ring buffer's stored (value, derivative) pairs,
 removing that rounding at the cost of storing/differentiating twice as
-much per buffer slot -- see notes/stepping_accuracy_review.md for the
+much per buffer slot -- see :ref:`dde-history-interpolation` for the
 design and tradeoffs.
 
-Tangent propagation is ``jax.jvp``-based, not ``jax.jacfwd``-based like
-``lyapax.core``: cost is O(k) forward passes per raw step (k = tracked
-exponents), not O(d_total) for the full augmented ``(state, buf)``
-dimension -- the earlier M4 attempt (state-augmentation fed through a
-dense jacfwd) didn't scale to real coupled networks, since d_total grows
-with both network size and ring-buffer depth. See notes/milestones.md
-(M4) for the full design discussion and a design-review pass that caught
-a subtle bug in an earlier draft of this engine (closing over the
-ring-buffer step counter ``t`` instead of threading it through the scan
-carry -- see the comment on ``t`` below).
+Tangent propagation is ``jax.jvp``-based (the same matrix-free pattern as
+``lyapax.core``, see :ref:`matrix-free-tangent`): cost is O(k) forward
+passes per raw step (k = tracked exponents), not O(d_total) for the full
+augmented ``(state, buf)`` dimension -- a dense-Jacobian approach does not
+scale to real coupled networks, since d_total grows with both network
+size and ring-buffer depth.
 
 Scope note: ``lyapunov_spectrum_dde`` itself has no opinion on delay
 structure -- it differentiates through whatever carry ``step_fn`` produces,
@@ -50,7 +46,7 @@ lives in ``lyapax.simulator.make_step_fn``, not here: a *custom*
 delayed sigmoidal/Kuramoto network) is currently only wired up for
 zero-delay and *uniform*-delay (single global ``tau_steps``) branches --
 combining a custom ``coupling_fn`` with per-edge delays needs an
-edge-aware ``coupling_fn`` signature, a separate design fork left for M5.
+edge-aware ``coupling_fn`` signature, which does not exist yet.
 """
 from __future__ import annotations
 
@@ -79,9 +75,9 @@ vector DDE. See make_scalar_delayed_step_fn."""
 def resolve_tau_steps(tau: float, dt: float, warn_tol: float = 1e-6) -> int:
     """Round a physical delay ``tau`` to an integer number of ``dt`` steps.
 
-    Integer-step only, no sub-step interpolation -- see risk #4 in
-    notes/milestones.md for the accuracy tradeoff this implies (characterize
-    it with a convergence-vs-dt test at fixed physical ``tau``). Every
+    Integer-step only, no sub-step interpolation -- see
+    :ref:`dde-history-interpolation` for the accuracy tradeoff this
+    implies. Every
     downstream Lyapunov spectrum is computed for the *rounded* delay
     ``tau_eff(tau_steps, dt)``, not the exact ``tau`` passed in -- use
     ``tau_eff`` to see what delay was actually used, and decrease ``dt``
@@ -150,10 +146,7 @@ def make_scalar_delayed_step_fn(
     front door used for real delayed networks, e.g.
     ``tests/test_dde.py``'s benchmark test) -- both build a step for the
     *same* underlying vendored ring-buffer simulator, so there is still
-    only one DDE mechanism, just two ways to construct a step for it (see
-    notes/milestones.md, M4, on why forcing every DDE through the network
-    machinery -- even a single scalar equation -- was a real usability gap
-    the ODE side never had).
+    only one DDE mechanism, just two ways to construct a step for it.
 
     Internally: a trivial "coupled to your own delayed history" 1-node
     self-loop, with an identity coupling_fn (the delayed state passes

@@ -2,9 +2,9 @@
 
 Benettin/QR tangent-propagation engine for differentiable JAX maps
 (``lyapunov_spectrum``) and fixed-delay ring-buffer DDEs
-(``lyapunov_spectrum_dde``). See notes/milestones.md for the design
-history and notes/validation_systems.md for the correctness tests this
-package is held to.
+(``lyapunov_spectrum_dde``). See :doc:`/background/lyapax_implementation`
+for how the engine works and :doc:`/background/validation` for the
+correctness checks this package is held to.
 """
 from __future__ import annotations
 

@@ -4,8 +4,9 @@ Plain flat-vector JAX functions, deliberately independent of the vendored
 ModelSpec/coupling machinery in ``lyapax.simulator`` — these are single-node,
 uncoupled textbook systems, so routing them through the string-expression
 codegen built for networked models would only add indirection. Each entry
-here corresponds to a tier in notes/validation_systems.md; see that doc for
-the reference Lyapunov values and citations.
+here corresponds to a tier of the validation suite; see
+:doc:`/background/validation` for the reference Lyapunov values and
+citations.
 
 Tier 4 (DDE) entries have a different shape than the rest: ``rhs_delayed
 (state_now, state_delayed) -> dstate`` instead of ``rhs(state) -> dstate``,

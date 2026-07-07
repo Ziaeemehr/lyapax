@@ -1,11 +1,11 @@
-"""M6: batched parameter/initial-condition sweeps via jax.vmap.
+"""Batched parameter/initial-condition sweeps via ``jax.vmap``.
 
 Mirrors vbi's ``JaxSweeper`` pattern (batch a simulation over a grid of
-parameter values) without reusing its code, per the vendoring decision (see
-notes/milestones.md, M0). The surface needed here is much smaller than a
+parameter values) without reusing its code, per the vendoring decision.
+The surface needed here is much smaller than a
 general sweeper: ``lyapax.simulator.make_step_fn``'s carry already threads
 ``params`` through as data rather than closing over it (see that function's
-docstring -- anticipated from M0/M4 specifically for this), so a parameter
+docstring), so a parameter
 sweep is just ``jax.vmap`` applied to a function that calls
 ``lyapax.core.lyapunov_spectrum`` once, with ``params`` (and optionally
 ``state0``) as the vmapped argument. No new tangent-propagation or

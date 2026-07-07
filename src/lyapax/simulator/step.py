@@ -9,8 +9,8 @@ This is the piece that unifies ODE and DDE: ``has_delays=False`` reads
 coupling from the instantaneous state; ``has_delays=True`` reads it from a
 ring buffer of past coupling-variable states via a flat-index gather. Both
 paths produce the same ``step(carry, _) -> (new_carry, new_state)`` shape
-consumed by ``jax.lax.scan``, and — critically for the Lyapunov engine in
-M1/M4 — both are plain, differentiable JAX functions of ``carry``.
+consumed by ``jax.lax.scan``, and — critically for the Lyapunov engines —
+both are plain, differentiable JAX functions of ``carry``.
 """
 from __future__ import annotations
 
@@ -37,6 +37,13 @@ def build_jax_dfun(spec: ModelSpec) -> Callable:
     Compiled once via exec() on the spec's own strings, same as the vbi
     original — nothing about the generated function blocks jax.jacfwd /
     jax.jvp.
+
+    .. warning::
+        The ``dfun_str`` expressions are code-generated and executed via
+        ``exec()`` with **no sanitization**. This is fine for specs a
+        caller writes themselves, but never build a ``ModelSpec`` from
+        untrusted input (user uploads, network data, config files from
+        unknown sources) — the strings can execute arbitrary code.
     """
     sv = spec.sv_names
     param_names = spec.param_names
@@ -77,8 +84,7 @@ def _write_ring(buf: jnp.ndarray, step: int, cvar_state: jnp.ndarray,
                 horizon: int) -> jnp.ndarray:
     """buf: (horizon, n_cvar, n_nodes) -> updated buf.
 
-    Time convention (see notes/possible_solution_to_open_issues.md and
-    notes/open_issues.md item 2): slot ``k % horizon`` holds the
+    Time convention: slot ``k % horizon`` holds the
     coupling-variable value at physical time ``k * dt``. ``step()``'s
     caller must pass the physical time index of ``cvar_state`` itself as
     ``step`` -- e.g. the newly integrated state advances the carry's own
@@ -158,7 +164,7 @@ def _read_uniform_delayed_cvar_interp(
     ``step*dt - tau_steps*dt``, from the stored value *and derivative* at
     the two grid points bracketing it, rather than snapping ``tau_steps``
     to the nearest integer. ``tau_steps`` is a plain (generally
-    non-integer) float here -- see notes/stepping_accuracy_review.md.
+    non-integer) float here.
 
     ``buf``: ``(horizon, 2, n_cvar, n_nodes)``, axis 1 = (value,
     derivative), as written by ``_write_ring_interp``.
@@ -192,8 +198,8 @@ def _read_uniform_delayed_cvar_interp(
 # the value read once at the step's start. Freezing it, the earlier
 # design, silently capped every one of these methods at O(dt) whenever
 # coupling was actually nonzero, regardless of the base method's nominal
-# order (rk4 and rk6 gave *identical* errors on a coupled network) -- see
-# notes/stepping_accuracy_review.md. ``make_step_fn``'s ``coupling_at``
+# order (rk4 and rk6 gave *identical* errors on a coupled network).
+# ``make_step_fn``'s ``coupling_at``
 # exploits this in two places: for the zero-delay case, coupling depends
 # on ``y_stage`` (the evolving state), evaluated fresh at each stage; for
 # ``has_delays=True`` with ``interpolate=True``, the delayed lookup
@@ -203,7 +209,7 @@ def _read_uniform_delayed_cvar_interp(
 # the ring-buffer write index was off by one full step, itself an O(dt)
 # bias that masked the improvement; with the write convention fixed, the
 # per-stage read restores the integrator's real order, capped at ~4 by
-# the cubic Hermite history -- see notes/stepping_accuracy_review.md.)
+# the cubic Hermite history.)
 # The grid-snapped delayed path (``interpolate=False``) still ignores
 # ``c``: without an interpolant there is no sub-step history to read, so
 # it stays O(dt) by construction. A caller that has no coupling at all
@@ -297,7 +303,7 @@ def make_step_fn(
         estimate; ``c``: its Butcher node, 0 at the first stage, 1 at the
         last) rather than being frozen once per step -- see the
         "Integrators" section's module comment, and
-        notes/stepping_accuracy_review.md for why freezing it instead
+        :ref:`dde-rk-stage-order` for why freezing it instead
         silently caps the whole scheme at O(dt) whenever coupling is
         nonzero. The zero-delay case reads coupling from ``y_stage`` (the
         evolving state) fresh at each stage; the interpolated-delay case
@@ -314,10 +320,10 @@ def make_step_fn(
         ``lyapax.coupling.CouplingFn``). When given, replaces the
         hardcoded ``G_default``/``coup_a``/``coup_b`` linear formula for
         *both* the zero-delay and (uniform-delay-only, see ``tau_steps``)
-        delayed branches, unifying this step with M3's coupling design
-        (notes/milestones.md, M4). ``G_default``/``coup_a``/``coup_b`` are
+        delayed branches, unifying this step with ``lyapax.coupling``'s
+        plain-callable design. ``G_default``/``coup_a``/``coup_b`` are
         ignored when ``coupling_fn`` is given. Default ``None`` preserves
-        the exact original (pre-M4) behavior.
+        the exact original vendored behavior.
     tau_steps : required alongside ``coupling_fn`` when ``has_delays=True``
         -- a single global delay (in steps), read via
         ``_read_uniform_delayed_cvar`` (O(1) ring-buffer read) or, when
@@ -326,7 +332,7 @@ def make_step_fn(
         ``interpolate``). Per-edge heterogeneous delays (the general
         ``delay_steps`` matrix) are not supported together with a custom
         ``coupling_fn`` yet -- that combination needs an edge-aware
-        coupling_fn signature, left for a future milestone (M5); use the
+        coupling_fn signature, which does not exist yet; use the
         legacy ``coupling_fn=None`` path (which does support per-edge
         ``delay_steps``, just with the hardcoded linear formula) until
         then.
@@ -334,7 +340,7 @@ def make_step_fn(
         Hermite interpolation (using the stored value *and* derivative at
         the two grid points bracketing the delayed time) instead of
         snapping to the nearest stored grid sample -- see
-        notes/stepping_accuracy_review.md. Requires ``has_delays=True``,
+        :ref:`dde-history-interpolation`. Requires ``has_delays=True``,
         ``coupling_fn`` given, and ``tau_steps`` given (the uniform-delay
         path only; not supported with the legacy per-edge ``delay_steps``
         path). ``tau_steps`` may then be a non-integer float: the physical
@@ -370,8 +376,7 @@ def make_step_fn(
     # at each integrator stage (see the "Integrators" section above): for
     # has_delays=False, at that stage's own intra-step state y_stage (c is
     # unused -- coupling only depends on the current state, not on time).
-    # This measurably fixes the zero-delay case (see
-    # notes/stepping_accuracy_review.md): a coupled linear network's error
+    # This measurably fixes the zero-delay case: a coupled linear network's error
     # dropped roughly five orders of magnitude at the same dt, and rk4/rk6
     # stopped giving identical (order-1) errors.
     #
@@ -383,8 +388,7 @@ def make_step_fn(
     # at first order exactly like frozen zero-delay coupling did. (This
     # same change was once tried and looked ineffective -- but only
     # because the ring-buffer write was then off by one slot, a second,
-    # independent O(dt) bias hiding the gain; see
-    # notes/stepping_accuracy_review.md Part C. With both fixed, the
+    # independent O(dt) bias hiding the gain. With both fixed, the
     # scalar linear DDE's measured order is ~2.0 under heun and ~4 under
     # rk4/rk6, the cubic Hermite history's ceiling.) The stage times
     # step + c never exceed step + 1, so with tau_steps >= 1 (validated

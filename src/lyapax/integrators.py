@@ -5,7 +5,7 @@ Independent of the vendored (Euler/Heun) integrators in
 plumbing for network models (M3+). These are plain ``state -> new_state``
 maps for standalone benchmark systems (Lorenz, Rössler, ...), where RK4's
 better accuracy at a given dt matters for getting a clean Lyapunov-exponent
-estimate (see notes/validation_systems.md, Tier 2).
+estimate (see :ref:`Tier 2 <validation-tier-2>` of the validation guide).
 """
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ see ``rk6_combine``'s docstring. Exposed so a coupled/delayed caller can
 recompute a state- or time-dependent input (e.g. network coupling, or a
 DDE's delayed history lookup) at the *correct* intra-step point for each
 stage, instead of freezing it at the step's start -- see
-notes/stepping_accuracy_review.md."""
+:ref:`dde-rk-stage-order`."""
 
 
 def rk6_combine(
@@ -67,7 +67,7 @@ def rk6_combine(
     ignore ``c``; ``lyapax.simulator.step``'s coupled-network RK6 uses it
     to recompute coupling (or a delayed history lookup) fresh at each
     stage's own intra-step state/time, rather than freezing it once per
-    step (see notes/stepping_accuracy_review.md) -- this and
+    step (see :ref:`dde-rk-stage-order`) -- this and
     ``rk6_step`` share the same tableau instead of duplicating ~30 lines
     of coefficients twice.
 

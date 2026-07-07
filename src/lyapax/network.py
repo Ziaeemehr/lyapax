@@ -1,17 +1,13 @@
-"""M3: coupled, zero-delay networks — wires a dfun + a coupling callable
+"""Coupled, zero-delay networks — wires a dfun + a coupling callable
 into the flat ``state -> new_state`` shape ``lyapax.core.lyapunov_spectrum``
 expects.
 
 Built on the vendored ring-buffer step (``lyapax.simulator.make_step_fn``,
 ``has_delays=False``) via a thin carry-to-flat adapter, not a second,
-independent Euler/Heun implementation. M3 originally built its own (this
-module used to have local ``_euler``/``_heun`` copies, byte-for-byte
-identical to the vendored ones) because at the time there was no way to
-feed a carry-based step into anything -- ``lyapax.core.lyapunov_spectrum``
-wants a flat ``state -> new_state`` map, and M4's carry-based Lyapunov
-engine (``lyapax.dde.lyapunov_spectrum_dde``) didn't exist yet. Unified
-here (M5 cleanup, see notes/milestones.md) now that there's a real adapter
-to write instead of a second copy of the integrators to maintain.
+independent Euler/Heun implementation -- the adapter is the single place
+that bridges the carry-based step to the flat map
+``lyapax.core.lyapunov_spectrum`` wants, so there is only one copy of the
+integrators to maintain.
 
 Why this still doesn't need ``lyapax.dde``'s carry-aware tangent engine:
 for ``has_delays=False`` the vendored step's ``buf`` never changes (it's a

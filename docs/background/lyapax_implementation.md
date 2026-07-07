@@ -7,6 +7,7 @@ parameter sweeps, and the numerical-precision requirements that follow
 from the algorithm. For the algorithm itself, see
 {doc}`lyapunov_exponents`.
 
+(matrix-free-tangent)=
 ## Matrix-free tangent propagation
 
 The Benettin/QR method needs the action of the step map's Jacobian on

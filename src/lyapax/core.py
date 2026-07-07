@@ -1,27 +1,23 @@
-"""Core Benettin/QR Lyapunov-spectrum engine (M1).
+"""Core Benettin/QR Lyapunov-spectrum engine.
 
 Scope: single-node (or otherwise uncoupled) systems given as a one-step
-map ``state -> new_state``. Networked/coupled systems (M3) and delayed
-systems (M4) reuse the same renormalization idea but need extra tangent
-bookkeeping (a delay ring buffer's tangent, in the DDE case) — see
-notes/milestones.md.
+map ``state -> new_state``. Networked/coupled systems (``lyapax.network``)
+and delayed systems (``lyapax.dde``) reuse the same renormalization idea
+but need extra tangent bookkeeping (a delay ring buffer's tangent, in the
+DDE case).
 
 Method: propagate a (d, k) matrix of tangent vectors alongside the
 trajectory. Every ``renorm_every`` steps, QR-decompose the tangent matrix,
 accumulate ``log|diag(R)|``, and replace the tangent matrix with the
 orthonormal factor ``Q`` (Benettin's method).
 
-Tangent propagation is ``jax.jvp``-based (M6), not ``jax.jacfwd``-based: one
+Tangent propagation is ``jax.jvp``-based, not ``jax.jacfwd``-based: one
 ``jax.jvp`` call per tracked column, batched via ``jax.vmap`` — cost is O(k)
-forward-mode passes per raw step, not O(d) for a dense Jacobian. M1-M5 used
-dense ``jax.jacfwd`` here deliberately ("start dense, don't add matrix-free
-machinery before a concrete need" — see notes/milestones.md); M4's DDE
-engine (``lyapax.dde.lyapunov_spectrum_dde``) already needed and validated
-this exact jvp/vmap pattern for a much larger augmented ``(state, buf)``
-dimension, so M6 carries it back here for the plain (no ring buffer) case,
-where it matters whenever ``k < d`` (the partial-spectrum case ``jacfwd``
-can't exploit, since it always computes all ``d`` columns regardless of
-how many are actually tracked).
+forward-mode passes per raw step, not O(d) for a dense Jacobian, which
+matters whenever ``k < d`` (the partial-spectrum case ``jacfwd`` can't
+exploit, since it always computes all ``d`` columns regardless of how many
+are actually tracked). See :ref:`matrix-free-tangent` for the design
+rationale.
 """
 from __future__ import annotations
 
@@ -39,8 +35,9 @@ StepFn = Callable[[jnp.ndarray], jnp.ndarray]
 
 def _warn_if_not_x64(state0: jnp.ndarray) -> None:
     """Lyapunov exponents are long-horizon averages of log-growth rates;
-    JAX's default float32 silently degrades them (see notes/milestones.md,
-    risk #1). Warn once per call site rather than raising, since a caller
+    JAX's default float32 silently degrades them (see
+    :ref:`precision-requirements`). Warn once per call site rather than
+    raising, since a caller
     computing genuinely short/coarse estimates may accept the precision
     loss -- but the default (x64 disabled) is very rarely what a caller
     actually wants here.
@@ -50,8 +47,8 @@ def _warn_if_not_x64(state0: jnp.ndarray) -> None:
         warnings.warn(
             "lyapax: jax_enable_x64 is not set, so state0 is float32 -- "
             "Lyapunov exponent estimates accumulate log-growth over many "
-            "steps and are known to degrade under float32 (see "
-            "notes/milestones.md, risk #1). Call "
+            "steps and are known to degrade under float32 (see the "
+            "'Precision requirements' section of the lyapax docs). Call "
             "`jax.config.update('jax_enable_x64', True)` before importing "
             "jax.numpy arrays, or pass a float64 state0 once x64 is "
             "enabled.",
@@ -201,8 +198,8 @@ def lyapunov_spectrum(
         is the "only the first few largest exponents" case.
     renorm_every : QR-renormalize every this many steps. Larger values
         reduce QR overhead but risk tangent-vector overflow/underflow for
-        fast-growing/shrinking directions (see notes/milestones.md, risk
-        #2) — keep small enough that
+        fast-growing/shrinking directions (see
+        :ref:`choosing-renorm-every`) — keep small enough that
         ``exp(|lambda_max| * renorm_every * dt)`` stays well within
         float64 range.
     t_transient : time to integrate (discarding tangent tracking) before
@@ -262,8 +259,8 @@ def lyapunov_spectrum(
         """Propagate state and tangent matrix jointly for n_substeps raw
         steps, then QR once. Used for both the transient (alignment) phase
         and each accumulation block, so a long transient still gets
-        periodic renormalization and can't overflow (risk #2 in
-        notes/milestones.md)."""
+        periodic renormalization and can't overflow (the ``renorm_every``
+        overflow risk)."""
         def _inner(carry_inner, _):
             state_i, Y_i = carry_inner
 
