@@ -10,7 +10,7 @@ the library's source: any function with the right signature is a
 first-class coupling, exactly like the built-in ``linear_coupling``/
 ``sigmoidal_coupling``/``kuramoto_coupling`` in ``lyapax.coupling``. This
 demo writes one from scratch -- no import from ``lyapax.coupling`` at all
--- and plugs it directly into ``make_network_step_fn``, reproducing the
+-- and plugs it directly into ``network_problem``, reproducing the
 exact linear-network result from ``plot_04_linear_network.py``.
 
 **The system.** Same idea as ``plot_04_linear_network.py`` -- scalar
@@ -22,7 +22,7 @@ are exactly ``gamma +/- G = {-0.8, -2.2}``. The only thing this example
 changes versus ``plot_04`` is the coupling term itself:
 ``my_linear_coupling`` below reimplements ``lyapax.coupling.linear_coupling``
 by hand (same ``G * W @ x`` formula) purely to demonstrate that
-``make_network_step_fn`` accepts *any* callable of the right signature --
+``network_problem`` accepts *any* callable of the right signature --
 the result should (and does) match ``plot_04``'s exact-eigenvalue check
 bit-for-bit in spirit, just for this smaller network.
 """
@@ -37,7 +37,7 @@ import jax.numpy as jnp
 jax.config.update("jax_enable_x64", True)
 
 from lyapax.core import lyapunov_spectrum
-from lyapax.network import make_network_step_fn
+from lyapax.network import Network, network_problem
 from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
 
 
@@ -66,14 +66,14 @@ model = ModelSpec(
 dfun = build_jax_dfun(model)
 params = {"gamma": gamma, "G": G}
 dt = 1e-3
-step = make_network_step_fn(
-    dfun, jnp.array(weights), model.cvar_indices, params, dt,
-    coupling_fn=my_linear_coupling,  # <- user function, not a lyapax builder
+network = Network(weights=jnp.array(weights), cvar_indices=model.cvar_indices)
+problem = network_problem(
+    dfun, network, my_linear_coupling,  # <- user function, not a lyapax builder
+    params=params, state0=jnp.array([0.2, -0.3]), dt=dt,
 )
 
 result = lyapunov_spectrum(
-    step, state0=jnp.array([0.2, -0.3]),
-    dt=dt, n_steps=20_000, renorm_every=10, t_transient=5.0,
+    problem, n_steps=20_000, renorm_every=10, t_transient=5.0,
 )
 
 estimate = np.array(result.exponents)

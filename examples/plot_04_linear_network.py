@@ -25,13 +25,16 @@ shifting and scaling by ``gamma=-2, G=0.5`` gives ``A``'s eigenvalues
 see ``src/lyapax/simulator/NOTICE.md``) compile a symbolic per-node
 right-hand side -- here the string ``"gamma * x + c"`` -- into a JAX
 function, rather than hand-writing the node dynamics as in the earlier
-examples; ``c`` is always the coupling input. ``make_network_step_fn``
-then wires that ``dfun`` together with a ``coupling_fn`` (see
-``lyapax.coupling`` -- here ``linear_coupling``, matching the identity
-coupling assumed above) and a Heun integrator into the flat
-``state -> new_state`` function that ``lyapunov_spectrum`` expects, reshaping
-between the network's natural ``(n_state_vars, n_nodes)`` layout and the
-flat vector the QR engine operates on.
+examples; ``c`` is always the coupling input. A ``lyapax.Network`` names
+the topology (``weights``, ``cvar_indices``), and ``network_problem``
+wires that ``dfun`` together with a ``coupling`` (see ``lyapax.coupling``
+-- here ``linear_coupling``, matching the identity coupling assumed
+above) and a Heun integrator into the flat ``state -> new_state`` function
+``lyapunov_spectrum`` expects, reshaping between the network's natural
+``(n_state_vars, n_nodes)`` layout and the flat vector the QR engine
+operates on -- while also bundling ``state0``/``dt`` alongside it, the
+same problem-object recipe ``ode_problem`` gives the plain-ODE case in
+``plot_01_linear_ode.py``.
 """
 # %%
 import os 
@@ -45,7 +48,7 @@ jax.config.update("jax_enable_x64", True)
 
 from lyapax.core import lyapunov_spectrum
 from lyapax.coupling import linear_coupling
-from lyapax.network import make_network_step_fn
+from lyapax.network import Network, network_problem
 from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
 
 # %%
@@ -70,14 +73,14 @@ model = ModelSpec(
 dfun = build_jax_dfun(model)
 params = {"gamma": gamma, "G": G}
 dt = 1e-3
-step = make_network_step_fn(
-    dfun, jnp.array(weights), model.cvar_indices, params, dt,
-    coupling_fn=linear_coupling(a=1.0, b=0.0),
+network = Network(weights=jnp.array(weights), cvar_indices=model.cvar_indices)
+problem = network_problem(
+    dfun, network, linear_coupling(a=1.0, b=0.0),
+    params=params, state0=jnp.array([0.3, -0.1, 0.2, -0.4]), dt=dt,
 )
 
 result = lyapunov_spectrum(
-    step, state0=jnp.array([0.3, -0.1, 0.2, -0.4]),
-    dt=dt, n_steps=20_000, renorm_every=10, t_transient=5.0,
+    problem, n_steps=20_000, renorm_every=10, t_transient=5.0,
 )
 
 estimate = np.array(result.exponents)

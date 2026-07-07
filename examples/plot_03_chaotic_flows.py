@@ -41,8 +41,7 @@ import jax.numpy as jnp
 
 jax.config.update("jax_enable_x64", True)
 
-from lyapax.core import lyapunov_spectrum
-from lyapax.integrators import rk4_step
+from lyapax.core import lyapunov_spectrum, ode_problem
 from lyapax.utils import simulate_trajectory
 from lyapax import systems
 
@@ -52,12 +51,11 @@ from lyapax import systems
 sigma, rho, beta = 10.0, 28.0, 8.0 / 3.0
 rhs = systems.lorenz(sigma, rho, beta)
 dt = 1e-2
-step = rk4_step(rhs, dt)
+problem_lorenz = ode_problem(rhs, state0=jnp.array([1.0, 1.0, 1.0]), dt=dt)
 
 t0 = time.perf_counter()
 result_lorenz = lyapunov_spectrum(
-    step, state0=jnp.array([1.0, 1.0, 1.0]),
-    dt=dt, n_steps=50_000, renorm_every=10, t_transient=100.0,
+    problem_lorenz, n_steps=50_000, renorm_every=10, t_transient=100.0,
 )
 elapsed_lorenz = time.perf_counter() - t0
 
@@ -70,7 +68,7 @@ print(f"  lambda1       = {float(result_lorenz.exponents[0]):.4f}   published ~0
 print(f"  wall time     = {elapsed_lorenz:.2f}s (incl. one-time JIT trace/compile)")
 
 # %%
-traj = np.array(simulate_trajectory(step, jnp.array([1.0, 1.0, 1.0]), 20_000))
+traj = np.array(simulate_trajectory(problem_lorenz.step_fn, problem_lorenz.state0, 20_000))
 
 fig = plt.figure(figsize=(10, 4))
 ax1 = fig.add_subplot(1, 2, 1, projection="3d")
@@ -95,14 +93,13 @@ plt.show()
 # needs the trajectory's time-average of x from the same run.
 a, b, c = 0.2, 0.2, 5.7
 rhs = systems.rossler(a, b, c)
-step = rk4_step(rhs, dt)
+problem_rossler = ode_problem(rhs, state0=jnp.array([1.0, 1.0, 1.0]), dt=dt)
 
 result_rossler = lyapunov_spectrum(
-    step, state0=jnp.array([1.0, 1.0, 1.0]),
-    dt=dt, n_steps=200_000, renorm_every=10, t_transient=200.0,
+    problem_rossler, n_steps=200_000, renorm_every=10, t_transient=200.0,
 )
 
-traj_r = np.array(simulate_trajectory(step, jnp.array([1.0, 1.0, 1.0]), 50_000))
+traj_r = np.array(simulate_trajectory(problem_rossler.step_fn, problem_rossler.state0, 50_000))
 mean_x = traj_r[:, 0].mean()
 expected_sum_rossler = a - c + mean_x
 

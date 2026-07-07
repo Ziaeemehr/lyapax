@@ -40,7 +40,7 @@ import jax.numpy as jnp
 
 jax.config.update("jax_enable_x64", True)
 
-from lyapax.core import lyapunov_spectrum
+from lyapax.core import lyapunov_spectrum, ode_problem
 from lyapax.integrators import rk4_step, rk6_step
 from lyapax import systems
 
@@ -49,19 +49,17 @@ from lyapax import systems
 sigma, rho, beta = 10.0, 28.0, 8.0 / 3.0
 rhs = systems.lorenz(sigma, rho, beta)
 dt = 1e-2
-step = rk4_step(rhs, dt)
+problem = ode_problem(rhs, state0=jnp.array([1.0, 1.0, 1.0]), dt=dt)
 
 ks = [1, 2, 3]
 first_call, second_call = [], []
 for k in ks:
     t0 = time.perf_counter()
-    lyapunov_spectrum(step, state0=jnp.array([1.0, 1.0, 1.0]), dt=dt,
-                       n_steps=20_000, renorm_every=10, k=k)
+    lyapunov_spectrum(problem, n_steps=20_000, renorm_every=10, k=k)
     first_call.append(time.perf_counter() - t0)
 
     t0 = time.perf_counter()
-    lyapunov_spectrum(step, state0=jnp.array([1.0, 1.0, 1.0]), dt=dt,
-                       n_steps=20_000, renorm_every=10, k=k)
+    lyapunov_spectrum(problem, n_steps=20_000, renorm_every=10, k=k)
     second_call.append(time.perf_counter() - t0)
 
 for k, t1, t2 in zip(ks, first_call, second_call):
@@ -103,15 +101,16 @@ expected_sum = -(sigma + 1.0 + beta)
 renorm_every = 10
 
 
-def _accuracy_vs_dt(step_builder, dts):
+def _accuracy_vs_dt(integrator, dts):
     errors = []
     for dt_i in dts:
-        step_i = step_builder(rhs, dt_i)
+        problem_i = ode_problem(
+            rhs, state0=jnp.array([1.0, 1.0, 1.0]), dt=dt_i, integrator=integrator,
+        )
         n_steps = (int(round(500.0 / dt_i)) // renorm_every) * renorm_every
         t_transient = int(round(100.0 / dt_i)) * dt_i
         result = lyapunov_spectrum(
-            step_i, state0=jnp.array([1.0, 1.0, 1.0]),
-            dt=dt_i, n_steps=n_steps, renorm_every=renorm_every,
+            problem_i, n_steps=n_steps, renorm_every=renorm_every,
             t_transient=t_transient,
         )
         errors.append(abs(float(jnp.sum(result.exponents)) - expected_sum))

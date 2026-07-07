@@ -30,12 +30,13 @@ heterogeneous natural frequencies ``omega`` evenly spaced over ``[-1, 1]``
 so the population would never sync on its own -- staggered initial
 phases start it far from the locked state. The classic Kuramoto ODE
 ``dtheta_i/dt = omega_i + (G/N) sum_j sin(theta_j - theta_i)`` is built
-here from the same two-piece machinery as
-``plot_04_linear_network.py``: ``ModelSpec``/``build_jax_dfun`` compile
-the bare node dynamics ``"omega + c"`` (``c`` is the coupling input) into
-a JAX function, and ``kuramoto_coupling`` supplies the sine-coupling term
-as ``c``; ``make_network_step_fn`` wires the two together into the flat
-step function the Lyapunov engine steps. Only ``k=2`` exponents are
+here from the same machinery as ``plot_04_linear_network.py``:
+``ModelSpec``/``build_jax_dfun`` compile the bare node dynamics
+``"omega + c"`` (``c`` is the coupling input) into a JAX function, and
+``kuramoto_coupling`` supplies the sine-coupling term as ``c``;
+``network_problem`` wires the two together (plus a ``lyapax.Network``
+topology and ``state0``/``dt``) into the flat step function the Lyapunov
+engine steps. Only ``k=2`` exponents are
 tracked per run (not the full spectrum of 6) since only the top two are
 needed to read off the transition -- see the ``k`` parameter in
 ``lyapunov_spectrum``'s docstring for the leading-exponents-only cost
@@ -55,7 +56,7 @@ jax.config.update("jax_enable_x64", True)
 
 from lyapax.core import lyapunov_spectrum
 from lyapax.coupling import kuramoto_coupling
-from lyapax.network import make_network_step_fn
+from lyapax.network import Network, network_problem
 from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
 
 # %%
@@ -71,6 +72,7 @@ model = ModelSpec(
     dfun_str={"theta": "omega + c"},
 )
 dfun = build_jax_dfun(model)
+network = Network(weights=weights, cvar_indices=model.cvar_indices)
 
 dt = 1e-2
 state0 = jnp.linspace(0.0, 2 * jnp.pi, n_nodes, endpoint=False)
@@ -81,13 +83,12 @@ lambda1, lambda2 = [], []
 t0 = time.perf_counter()
 for G in G_values:
     params = {"omega": omega, "G": float(G)}
-    step = make_network_step_fn(
-        dfun, weights, model.cvar_indices, params, dt,
-        coupling_fn=kuramoto_coupling(alpha=0.0),
+    problem = network_problem(
+        dfun, network, kuramoto_coupling(alpha=0.0),
+        params=params, state0=state0, dt=dt,
     )
     result = lyapunov_spectrum(
-        step, state0=state0, dt=dt, n_steps=5_000, renorm_every=10,
-        k=2, t_transient=50.0,
+        problem, n_steps=5_000, renorm_every=10, k=2, t_transient=50.0,
     )
     lambda1.append(float(result.exponents[0]))
     lambda2.append(float(result.exponents[1]))

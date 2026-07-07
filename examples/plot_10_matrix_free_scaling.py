@@ -41,12 +41,12 @@ jax.config.update("jax_enable_x64", True)
 
 from lyapax.core import lyapunov_spectrum
 from lyapax.coupling import kuramoto_coupling
-from lyapax.network import make_network_step_fn
+from lyapax.network import Network, network_problem
 from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
 
 
 # %%
-def make_kuramoto_step(n_nodes, dt):
+def make_kuramoto_problem(n_nodes, dt):
     weights = jnp.ones((n_nodes, n_nodes)) - jnp.eye(n_nodes)
     model = ModelSpec(
         name="kuramoto", state_variables=(StateVar("theta", default_init=0.0),),
@@ -55,12 +55,12 @@ def make_kuramoto_step(n_nodes, dt):
     )
     dfun = build_jax_dfun(model)
     params = {"omega": jnp.linspace(-1.0, 1.0, n_nodes), "G": 1.0}
-    step = make_network_step_fn(
-        dfun, weights, model.cvar_indices, params, dt,
-        coupling_fn=kuramoto_coupling(alpha=0.0),
-    )
+    network = Network(weights=weights, cvar_indices=model.cvar_indices)
     state0 = jnp.linspace(0.0, 2 * jnp.pi, n_nodes, endpoint=False)
-    return step, state0
+    return network_problem(
+        dfun, network, kuramoto_coupling(alpha=0.0),
+        params=params, state0=state0, dt=dt,
+    )
 
 
 # %%
@@ -71,7 +71,8 @@ n_raw_steps = 100
 dense_times, jvp_times = [], []
 
 for n_nodes in node_sizes:
-    step, state0 = make_kuramoto_step(n_nodes, dt)
+    problem = make_kuramoto_problem(n_nodes, dt)
+    step, state0 = problem.step_fn, problem.state0
     d = state0.shape[0]
     key = jax.random.PRNGKey(0)
     Y0, _ = jnp.linalg.qr(jax.random.normal(key, (d, k), dtype=jnp.float64))
@@ -130,10 +131,10 @@ plt.show()
 # --- confirm lyapunov_spectrum itself (now jvp/vmap-based) scales to a
 # full accumulation run on the largest network above, not just the raw
 # per-step timing loop --
-step, state0 = make_kuramoto_step(200, dt)
+problem = make_kuramoto_problem(200, dt)
 t0 = time.perf_counter()
 result = lyapunov_spectrum(
-    step, state0=state0, dt=dt, n_steps=2_000, k=5, renorm_every=10, t_transient=5.0,
+    problem, n_steps=2_000, k=5, renorm_every=10, t_transient=5.0,
 )
 elapsed = time.perf_counter() - t0
 print(f"\nlyapunov_spectrum, d=200, k=5, 2000 steps: {elapsed:.2f}s")

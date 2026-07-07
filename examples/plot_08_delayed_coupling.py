@@ -38,6 +38,17 @@ Mackey-Glass) needs the general, per-edge ``delay_steps`` path:
 its ring-buffer history together, periodically re-orthonormalizing the
 tangent directions via QR, the same Benettin's-method idea as the
 non-delayed engine, just carrying delay history alongside the state.
+
+Deliberately staying low-level here: ``network_dde_problem`` (the
+problem-object front door used by ``plot_09_kuramoto_delayed_network.py``
+and ``plot_12_public_api_overview.py``) only covers a single *uniform*
+delay shared by every edge, and explicitly rejects a per-edge
+``delay_steps`` matrix like the one this script needs -- see that
+function's docstring. A per-edge delay matrix combined with a custom
+``coupling_fn`` isn't wired up at all yet (only this hardcoded-linear
+``delay_steps`` path is); this script is the one place that still needs
+the raw ``Connectivity``/``make_step_fn``/``lyapunov_spectrum_dde`` call
+form for that reason, not because it predates the new API.
 """
 # %%
 import os

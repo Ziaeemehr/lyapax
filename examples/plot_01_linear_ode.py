@@ -40,24 +40,23 @@ import jax.numpy as jnp
 
 jax.config.update("jax_enable_x64", True)
 
-from lyapax.core import lyapunov_spectrum
-from lyapax.integrators import rk4_step
+from lyapax.core import lyapunov_spectrum, ode_problem
 from lyapax import systems
 
 # %%
-# Distinct real eigenvalues, no coupling, no chaos. ``rk4_step`` turns the
-# continuous-time ``rhs`` into a fixed-``dt`` update; ``lyapunov_spectrum``
-# is the Benettin/QR engine described above, run for ``n_steps`` post-
-# transient steps with QR renormalization every ``renorm_every`` steps.
+# Distinct real eigenvalues, no coupling, no chaos. ``ode_problem`` turns
+# the continuous-time ``rhs`` into a fixed-``dt`` update (``integrator=
+# "rk4"`` by default) and bundles ``state0``/``dt`` alongside it, so
+# ``lyapunov_spectrum`` -- the Benettin/QR engine described above -- only
+# needs ``n_steps`` and the run controls, not a second copy of ``dt``.
 A = jnp.diag(jnp.array([-1.0, -2.0, -5.0]))
 rhs = systems.linear_system(A)
 dt = 1e-3
-step = rk4_step(rhs, dt)
+problem = ode_problem(rhs, state0=jnp.array([0.3, -0.2, 0.5]), dt=dt)
 
 t0 = time.perf_counter()
 result = lyapunov_spectrum(
-    step, state0=jnp.array([0.3, -0.2, 0.5]),
-    dt=dt, n_steps=20_000, renorm_every=10, t_transient=5.0,
+    problem, n_steps=20_000, renorm_every=10, t_transient=5.0,
 )
 elapsed = time.perf_counter() - t0
 

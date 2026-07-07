@@ -13,10 +13,11 @@ is cached across same-shape calls).
 
 **Why sweeping needs a different step function.** ``jax.vmap`` can only
 batch over things passed to it as *data*, not over values baked into a
-closure at construction time -- and ``make_network_step_fn`` closes
-``params`` (e.g. the coupling strength ``G``) over when it's built, exactly
-like the non-swept examples use it. ``make_parametrized_network_step_fn``
-is the same network wiring with ``params`` taken as a call-time argument
+closure at construction time -- and both ``network_problem`` and the
+lower-level ``make_network_step_fn`` it wraps close ``params`` (e.g. the
+coupling strength ``G``) over when the step is built, exactly like the
+non-swept examples use it. ``network_step_parametrized`` is the same
+``Network``-based wiring with ``params`` taken as a call-time argument
 instead (``step(state, params) -> new_state``), so a batch of ``params``
 values can be threaded through a single ``jax.vmap`` call around the
 *existing*, unmodified ``lyapunov_spectrum`` -- no new tangent-propagation
@@ -43,7 +44,7 @@ jax.config.update("jax_enable_x64", True)
 
 from lyapax.core import lyapunov_spectrum
 from lyapax.coupling import kuramoto_coupling
-from lyapax.network import make_network_step_fn, make_parametrized_network_step_fn
+from lyapax.network import Network, network_problem, network_step_parametrized
 from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
 from lyapax.sweep import sweep_lyapunov_spectrum
 
@@ -60,6 +61,7 @@ model = ModelSpec(
     dfun_str={"theta": "omega + c"},
 )
 dfun = build_jax_dfun(model)
+network = Network(weights=weights, cvar_indices=model.cvar_indices)
 
 dt = 1e-2
 state0 = jnp.linspace(0.0, 2 * jnp.pi, n_nodes, endpoint=False)
@@ -70,8 +72,8 @@ sweep_kwargs = dict(dt=dt, n_steps=5_000, renorm_every=10, k=2, t_transient=50.0
 
 # %%
 # --- one vmap-batched call over the whole G grid ---
-step_p = make_parametrized_network_step_fn(
-    dfun, weights, model.cvar_indices, dt, kuramoto_coupling(alpha=0.0))
+step_p = network_step_parametrized(
+    dfun, network, kuramoto_coupling(alpha=0.0), dt)
 params_batch = {
     "omega": jnp.broadcast_to(omega, (n_sweep, n_nodes)),
     "G": G_values,
@@ -85,15 +87,16 @@ print(f"vmap sweep ({n_sweep} points): {t_vmap:.2f}s")
 
 # %%
 # --- reference: the plot_05 Python loop, same system, same G values ---
+loop_kwargs = {k: v for k, v in sweep_kwargs.items() if k != "dt"}
 t0 = time.perf_counter()
 lambda1_loop, lambda2_loop = [], []
 for G in G_values:
     params = {"omega": omega, "G": float(G)}
-    step = make_network_step_fn(
-        dfun, weights, model.cvar_indices, params, dt,
-        coupling_fn=kuramoto_coupling(alpha=0.0),
+    problem = network_problem(
+        dfun, network, kuramoto_coupling(alpha=0.0),
+        params=params, state0=state0, dt=dt,
     )
-    result = lyapunov_spectrum(step, state0=state0, **sweep_kwargs)
+    result = lyapunov_spectrum(problem, **loop_kwargs)
     lambda1_loop.append(float(result.exponents[0]))
     lambda2_loop.append(float(result.exponents[1]))
 t_loop = time.perf_counter() - t0

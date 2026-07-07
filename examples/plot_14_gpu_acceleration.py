@@ -59,7 +59,7 @@ def _run_lyapunov_spectrum(backend: str, n_nodes: int, n_steps: int) -> None:
 
     from lyapax.core import lyapunov_spectrum
     from lyapax.coupling import kuramoto_coupling
-    from lyapax.network import make_network_step_fn
+    from lyapax.network import Network, network_problem
     from lyapax.simulator import ModelSpec, Parameter, StateVar, build_jax_dfun
 
     weights = jnp.ones((n_nodes, n_nodes)) - jnp.eye(n_nodes)
@@ -71,22 +71,23 @@ def _run_lyapunov_spectrum(backend: str, n_nodes: int, n_steps: int) -> None:
     dfun = build_jax_dfun(model)
     params = {"omega": jnp.linspace(-1.0, 1.0, n_nodes), "G": 1.0}
     dt = 1e-2
-    step = make_network_step_fn(
-        dfun, weights, model.cvar_indices, params, dt,
-        coupling_fn=kuramoto_coupling(alpha=0.0),
-    )
+    network = Network(weights=weights, cvar_indices=model.cvar_indices)
     state0 = jnp.linspace(0.0, 2 * jnp.pi, n_nodes, endpoint=False)
+    problem = network_problem(
+        dfun, network, kuramoto_coupling(alpha=0.0),
+        params=params, state0=state0, dt=dt,
+    )
 
     # Warmup: pay JIT tracing/compilation, and for GPU the first
     # host->device transfer, once, outside the timed call.
     warm = lyapunov_spectrum(
-        step, state0=state0, dt=dt, n_steps=10, k=5, renorm_every=5, t_transient=0.0,
+        problem, n_steps=10, k=5, renorm_every=5, t_transient=0.0,
     )
     jax.block_until_ready(warm.exponents)
 
     t0 = time.perf_counter()
     result = lyapunov_spectrum(
-        step, state0=state0, dt=dt, n_steps=n_steps, k=5, renorm_every=10, t_transient=0.0,
+        problem, n_steps=n_steps, k=5, renorm_every=10, t_transient=0.0,
     )
     jax.block_until_ready(result.exponents)
     elapsed = time.perf_counter() - t0

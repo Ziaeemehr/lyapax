@@ -32,8 +32,8 @@ through one shared ``lyapax.Network`` topology object -- ``lyapax.coupling``
 builders are plain callables with no delay opinion baked in, so the same
 coupling function works whether the state it receives is instantaneous or
 delayed. The delay-0 run goes through ``lyapax.network_problem`` +
-``lyapax.lyapunov_spectrum``, computing exactly what ``plot_05`` computes
-via its lower-level ``make_network_step_fn`` call; the delayed run goes
+``lyapax.lyapunov_spectrum``, the same front door ``plot_05`` itself now
+uses, so the two produce exactly the same numbers; the delayed run goes
 through ``lyapax.network_dde_problem(..., tau=tau)`` (the *uniform*-delay
 branch -- a single global ``tau`` shared by every edge, not the per-edge
 ``delay_steps`` matrix from ``plot_08_delayed_coupling.py``) +
