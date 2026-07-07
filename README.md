@@ -4,7 +4,7 @@
 
 # lyapax
 
-[![CI](https://github.com/Ziaeemehr/lyapax/actions/workflows/ci.yml/badge.svg)](https://github.com/Ziaeemehr/lyapax/actions/workflows/ci.yml)
+[![CI](https://github.com/Ziaeemehr/lyapax/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Ziaeemehr/lyapax/actions/workflows/ci.yml?query=branch%3Amain)
 [![Documentation Status](https://readthedocs.org/projects/lyapax/badge/?version=latest)](https://lyapax.readthedocs.io/en/latest/?badge=latest)
 
 JAX-native Lyapunov exponent computation for ODEs and DDEs, via the
