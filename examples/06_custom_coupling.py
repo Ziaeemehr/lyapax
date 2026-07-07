@@ -11,19 +11,26 @@ first-class coupling, exactly like the built-in ``linear_coupling``/
 ``sigmoidal_coupling``/``kuramoto_coupling`` in ``lyapax.coupling``. This
 demo writes one from scratch -- no import from ``lyapax.coupling`` at all
 -- and plugs it directly into ``network_problem``, reproducing the
-exact linear-network result from ``04_linear_network.py``.
+exact linear-network result from
+:ref:`04_linear_network.py <sphx_glr_auto_examples_04_linear_network.py>`.
 
-**The system.** Same idea as ``04_linear_network.py`` -- scalar
+**The system.** Same idea as
+:ref:`04_linear_network.py <sphx_glr_auto_examples_04_linear_network.py>` --
+scalar
 linear node dynamics ``x_i' = gamma * x_i + c_i`` coupled linearly, so
 the whole network reduces to ``x' = (gamma*I + G*W) x`` -- but scaled
 down to 2 nodes joined by a single edge (``weights = [[0,1],[1,0]]``).
 That adjacency matrix has eigenvalues ``{1, -1}``, so ``A``'s eigenvalues
 are exactly ``gamma +/- G = {-0.8, -2.2}``. The only thing this example
-changes versus ``04_linear_network.py`` is the coupling term itself:
+changes versus
+:ref:`04_linear_network.py <sphx_glr_auto_examples_04_linear_network.py>` is
+the coupling term itself:
 ``my_linear_coupling`` below reimplements ``lyapax.coupling.linear_coupling``
 by hand (same ``G * W @ x`` formula) purely to demonstrate that
 ``network_problem`` accepts *any* callable of the right signature --
-the result should (and does) match ``04_linear_network.py``'s exact-eigenvalue check
+the result should (and does) match
+:ref:`04_linear_network.py <sphx_glr_auto_examples_04_linear_network.py>`'s
+exact-eigenvalue check
 bit-for-bit in spirit, just for this smaller network.
 """
 # %%

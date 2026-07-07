@@ -11,7 +11,9 @@ Two practical questions before trusting lyapax on a new problem:
    step ``dt`` decreases, and how much does that depend on which
    integrator computes each step?
 
-Both use the Lorenz system from ``03_chaotic_flows.py`` as the test
+Both use the Lorenz system from
+:ref:`03_chaotic_flows.py <sphx_glr_auto_examples_03_chaotic_flows.py>` as the
+test
 case: it's genuinely chaotic (so representative of a real workload,
 unlike the linear/map toy systems) yet still has the exact
 ``sum(lambda) = -(sigma + 1 + beta)`` invariant to measure error against,

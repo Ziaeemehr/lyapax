@@ -49,7 +49,9 @@ from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
 # %%
 # 1. Plain ODE: ``ode_problem(rhs, state0, dt, integrator=...)``
 # -----------------------------------------------------------------
-# Same linear system as ``01_linear_ode.py`` (diagonal ``A``, so the
+# Same linear system as
+# :ref:`01_linear_ode.py <sphx_glr_auto_examples_01_linear_ode.py>` (diagonal
+# ``A``, so the
 # exact Lyapunov spectrum is just ``A``'s eigenvalues). ``ode_problem``
 # builds the step (via ``ode_step`` internally) and carries ``state0``/``dt``
 # alongside it, so ``lyapunov_spectrum`` only needs the problem and
@@ -76,7 +78,9 @@ print(f"  ode_problem estimate: {np.array(result_ode.exponents)}")
 # %%
 # 2. Coupled network: ``Network`` + ``network_problem(..., integrator=...)``
 # --------------------------------------------------------------------------
-# Same 4-node cycle network as ``04_linear_network.py``: identical
+# Same 4-node cycle network as
+# :ref:`04_linear_network.py <sphx_glr_auto_examples_04_linear_network.py>`:
+# identical
 # scalar node dynamics ``x_i' = gamma*x_i + c_i`` coupled linearly through
 # adjacency matrix ``W``, so the exact spectrum is ``eig(gamma*I + G*W)``.
 # ``Network`` names ``weights``/``cvar_indices`` as one object instead of two
@@ -117,7 +121,8 @@ print(f"  network_problem estimate: {np.array(result_net.exponents)}")
 # %%
 # 3. Delayed coupled network: ``network_dde_problem``
 # ------------------------------------------------------
-# Same 2-node delayed linear network as ``08_delayed_coupling.py``
+# Same 2-node delayed linear network as
+# :ref:`08_delayed_coupling.py <sphx_glr_auto_examples_08_delayed_coupling.py>`
 # (``x1' = gamma*x1 + G*x2(t-tau)``, ``x2' = gamma*x2 + G*x1(t-tau)``), whose
 # symmetric/antisymmetric modes have closed-form Lambert-W exponents. There,
 # building this required ``Connectivity`` for the delay matrix and a raw

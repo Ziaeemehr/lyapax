@@ -5,7 +5,8 @@ Coupled linear network: exact eigenvalues
 Isolates "did we wire the coupling term into the Jacobian correctly" from
 "is chaos numerically well-resolved": for a linear coupled network, the
 full Lyapunov spectrum is exactly the eigenvalues of the constant network
-Jacobian ``gamma*I + G*W``. See Tier 3.1 in ``notes/validation_systems.md``.
+Jacobian ``gamma*I + G*W``. See :ref:`Tier 3 <validation-tier-3>` of the
+validation guide.
 
 **The system.** Each of the 4 nodes has identical scalar linear dynamics
 ``x_i' = gamma * x_i + c_i``, where ``c_i`` is the coupling input from its
@@ -13,7 +14,9 @@ neighbors; with ``linear_coupling(a=1, b=0)`` that input is
 ``c_i = G * sum_j w[i, j] x_j``, i.e. a matrix-vector product against the
 adjacency matrix ``W``. Stacking all nodes, the whole network is therefore
 the single linear ODE ``x' = (gamma*I + G*W) x`` -- the same kind of exact
-eigenvalue check as ``01_linear_ode.py``, except now ``A`` is
+eigenvalue check as
+:ref:`01_linear_ode.py <sphx_glr_auto_examples_01_linear_ode.py>`, except now
+``A`` is
 *assembled* from a graph and a coupling rule instead of being handed to
 the engine directly, so this validates that assembly rather than the core
 QR bookkeeping. ``W`` here is a 4-node cycle graph (a-b-c-d-a), which is
@@ -34,7 +37,7 @@ above) and a Heun integrator into the flat ``state -> new_state`` function
 ``(n_state_vars, n_nodes)`` layout and the flat vector the QR engine
 operates on -- while also bundling ``state0``/``dt`` alongside it, the
 same problem-object recipe ``ode_problem`` gives the plain-ODE case in
-``01_linear_ode.py``.
+:ref:`01_linear_ode.py <sphx_glr_auto_examples_01_linear_ode.py>`.
 """
 # %%
 import os 

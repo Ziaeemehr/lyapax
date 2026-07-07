@@ -30,7 +30,8 @@ heterogeneous natural frequencies ``omega`` evenly spaced over ``[-1, 1]``
 so the population would never sync on its own -- staggered initial
 phases start it far from the locked state. The classic Kuramoto ODE
 ``dtheta_i/dt = omega_i + (G/N) sum_j sin(theta_j - theta_i)`` is built
-here from the same machinery as ``04_linear_network.py``:
+here from the same machinery as
+:ref:`04_linear_network.py <sphx_glr_auto_examples_04_linear_network.py>`:
 ``ModelSpec``/``build_jax_dfun`` compile the bare node dynamics
 ``"omega + c"`` (``c`` is the coupling input) into a JAX function, and
 ``kuramoto_coupling`` supplies the sine-coupling term as ``c``;

@@ -5,10 +5,13 @@ Chaotic flows: Lorenz and Rossler
 Full-spectrum Lyapunov exponents for the two classic chaotic-ODE
 benchmarks, cross-checked against a structural invariant (constant or
 directly-computable phase-space divergence) as well as published values.
-See Tiers 1 and 2 in ``notes/validation_systems.md``.
+See the validation guide, :ref:`Tier 1 <validation-tier-1>` and
+:ref:`Tier 2 <validation-tier-2>`.
 
 **The systems.** Both are genuinely chaotic, so unlike
-``01_linear_ode.py`` and ``02_chaotic_maps.py`` there is no
+:ref:`01_linear_ode.py <sphx_glr_auto_examples_01_linear_ode.py>` and
+:ref:`02_chaotic_maps.py <sphx_glr_auto_examples_02_chaotic_maps.py>` there is
+no
 closed-form value for the individual exponents to check against -- only a
 structural invariant plus a published reference value for ``lambda1``.
 For the Lorenz system, ``trace(J) = -(sigma + 1 + beta)`` is *constant*
@@ -21,9 +24,12 @@ trajectory's time-averaged ``<x>``, computed here from a second,
 independent run (``simulate_trajectory``) -- a weaker but still exact
 identity, ``sum(lambda) = a - c + <x>``.
 
-**The method.** Same Benettin/QR engine as ``01_linear_ode.py``, just
+**The method.** Same Benettin/QR engine as
+:ref:`01_linear_ode.py <sphx_glr_auto_examples_01_linear_ode.py>`, just
 with a nonlinear ``rhs`` (linearized freshly at each step via
-``jax.jacfwd``, as in ``02_chaotic_maps.py``) and a much longer
+``jax.jacfwd``, as in
+:ref:`02_chaotic_maps.py <sphx_glr_auto_examples_02_chaotic_maps.py>`) and a
+much longer
 transient/run to let the trajectory settle onto the attractor and the
 running exponent estimates average out their fluctuations -- chaotic
 flows converge far more slowly and noisily than the linear or

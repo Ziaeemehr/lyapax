@@ -5,7 +5,8 @@ Linear ODE: exact Lyapunov spectrum
 The simplest possible correctness check for the Benettin/QR engine: for a
 linear system ``x' = A x``, the Lyapunov spectrum is *exactly* the real
 parts of the eigenvalues of ``A`` -- no chaos, no literature value to
-trust, just linear algebra. See Tier 0.1 in ``notes/validation_systems.md``.
+trust, just linear algebra. See :ref:`Tier 0.1 <validation-tier-0-1>` of
+the validation guide.
 
 **The system.** ``A`` here is diagonal with entries -1, -2, -5, so the
 trajectory decays to the origin along the coordinate axes, and the

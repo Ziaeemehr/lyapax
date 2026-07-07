@@ -4,8 +4,8 @@ Chaotic maps: exact analytic Lyapunov exponents
 
 Discrete maps avoid integration-scheme error entirely -- useful for
 isolating bugs in the QR/renormalization bookkeeping itself, independent
-of any ODE-integrator accuracy question. See Tiers 0.2 and 0.3 in
-``notes/validation_systems.md``.
+of any ODE-integrator accuracy question. See the validation guide,
+:ref:`Tier 0.2 <validation-tier-0-2>` and :ref:`Tier 0.3 <validation-tier-0-3>`.
 
 **The systems.** The logistic map ``x_{n+1} = r x_n (1 - x_n)`` at ``r=4``
 is exactly conjugate to the tent map via ``x = sin^2(pi y / 2)``, which
@@ -22,7 +22,9 @@ each map is already a one-step update, so ``lyapunov_spectrum`` calls
 ``jax.jacfwd(step_fn)`` directly on the map at every step to linearize it,
 then evolves the tangent (deviation-vector) matrix under that Jacobian and
 periodically re-orthonormalizes it via QR decomposition (the Benettin/QR
-method -- see ``01_linear_ode.py`` for the full mechanics). Passing
+method -- see
+:ref:`01_linear_ode.py <sphx_glr_auto_examples_01_linear_ode.py>` for the full
+mechanics). Passing
 ``dt=1.0`` just labels each map iterate as one time unit, so the resulting
 exponents are directly per-iterate growth rates.
 """

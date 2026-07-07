@@ -15,7 +15,8 @@ is large enough to amortize the overhead, the GPU pulls ahead, often by a
 large margin.
 
 **The comparison.** The same growing all-to-all Kuramoto network as
-``10_matrix_free_scaling.py`` (``d`` = ``n_nodes``, one phase per
+:ref:`10_matrix_free_scaling.py <sphx_glr_auto_examples_10_matrix_free_scaling.py>`
+(``d`` = ``n_nodes``, one phase per
 node, dense ``d x d`` coupling weights), timed end-to-end through
 ``lyapax.core.lyapunov_spectrum`` at a fixed ``k=5`` and increasing ``d``,
 once on CPU and once on GPU. Growing ``d`` grows the coupling matrix's
@@ -44,7 +45,12 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-THIS_FILE = Path(__file__).resolve()
+try:
+    THIS_FILE = Path(__file__).resolve()
+except NameError:
+    # sphinx-gallery exec()s examples without __file__, but chdirs into the
+    # example's directory first, so the filename alone still resolves.
+    THIS_FILE = (Path.cwd() / "14_gpu_acceleration.py").resolve()
 
 
 def _run_lyapunov_spectrum(backend: str, n_nodes: int, n_steps: int) -> None:
