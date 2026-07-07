@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/_static/lyapax_logo.svg" alt="LYAPAX logo" width="520">
+</p>
+
 # lyapax
 
 JAX-native Lyapunov exponent computation for ODEs and DDEs, via the
