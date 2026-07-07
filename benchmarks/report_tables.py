@@ -30,6 +30,8 @@ REPORT_PATH = HERE.parent / "notes" / "benchmark_report.md"
 TOOL_LABEL = {
     "lyapax": "lyapax",
     "lyapax-rk6": "lyapax (RK6)",
+    "lyapax-gpu": "lyapax (GPU)",
+    "lyapax-rk6-gpu": "lyapax (RK6, GPU)",
     "jitcode": "jitcode",
     "jitcdde": "jitcdde",
     "chaostools": "ChaosTools.jl",
@@ -234,7 +236,8 @@ def build_dde_table(by_system: dict) -> str:
 
 
 def build_performance_table(by_system: dict) -> str:
-    order = ["lyapax", "lyapax-rk6", "jitcode", "jitcdde", "chaostools"]
+    order = ["lyapax", "lyapax-rk6", "lyapax-gpu", "lyapax-rk6-gpu",
+              "jitcode", "jitcdde", "chaostools"]
     systems = ["linear_ode_tier0.1", "lorenz_tier1.1", "rossler_tier1.2",
                "linear_network_tier3.1", "linear_scalar_dde_tier4.2",
                "mackey_glass_tier4.1"]

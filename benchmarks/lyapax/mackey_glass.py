@@ -1,13 +1,13 @@
 """Tier 4.1: Mackey-Glass. Same params as
 tests/test_dde.py::test_mackey_glass_qualitative_chaos.
 """
+from _common import time_and_run, emit  # noqa: I001 -- must set JAX_PLATFORMS before jax import
+
 import jax.numpy as jnp
 import numpy as np
 
 from lyapax.dde import dde_problem, lyapunov_spectrum_dde
 from lyapax import systems
-
-from _common import time_and_run, emit
 
 
 def _kaplan_yorke_dimension(exponents: np.ndarray) -> float:

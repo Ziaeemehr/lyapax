@@ -25,7 +25,11 @@ integrator/problem construction recipe, with ``state0``/``dt`` given once,
 and grid-snapped vs. Hermite-interpolated DDE history reads
 (``interpolate=True``) compared against a closed-form (Lambert W)
 reference, showing why the latter converges smoothly as ``dt`` shrinks
-and the former does not.
+and the former does not -- and a CPU-vs-GPU wall-time comparison across
+growing network size, showing that ``lyapax``'s GPU support only pays off
+once the per-step arithmetic is large enough to amortize a GPU's fixed
+kernel-launch/transfer overhead, with the crossover point measured rather
+than asserted.
 
 New capability -> new demo: as engine features land (a new coupling kind, a
 new delay structure, a performance change, ...), add a runnable example

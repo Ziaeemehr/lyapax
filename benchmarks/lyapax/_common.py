@@ -35,6 +35,13 @@ def time_and_run(fn, *args, **kwargs):
 
 
 def emit(tool, system, exponents, first_s, warm_s, **extra):
+    # JAX_PLATFORMS is only a *default* (see setdefault above) -- a caller
+    # (collect_results.py's GPU pass) can already override it before this
+    # script runs. Tag the tool name with the backend actually used so a
+    # GPU run and a CPU run of the same script land in different
+    # results.json rows instead of one silently overwriting the other.
+    if jax.default_backend() == "gpu" and not tool.endswith("-gpu"):
+        tool = f"{tool}-gpu"
     payload = {
         "tool": tool,
         "system": system,

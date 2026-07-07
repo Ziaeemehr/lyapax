@@ -1,14 +1,14 @@
 """Tier 3.1: 4-node linear network, 4-cycle graph. Same params as
 tests/test_network.py::test_linear_network_matches_eigenvalues_of_full_jacobian.
 """
+from _common import time_and_run, emit  # noqa: I001 -- must set JAX_PLATFORMS before jax import
+
 import jax.numpy as jnp
 
 from lyapax.core import lyapunov_spectrum
 from lyapax.coupling import linear_coupling
 from lyapax.network import Network, network_problem
 from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
-
-from _common import time_and_run, emit
 
 
 def _linear_node_model(gamma: float) -> ModelSpec:

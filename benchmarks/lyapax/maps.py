@@ -1,12 +1,12 @@
 """Tier 0.2/0.3: logistic map, tent map, Henon map. Same params as
 tests/test_lyapunov_core.py's map tests.
 """
+from _common import time_and_run, emit  # noqa: I001 -- must set JAX_PLATFORMS before jax import
+
 import jax.numpy as jnp
 
 from lyapax.core import ODEProblem, lyapunov_spectrum
 from lyapax import systems
-
-from _common import time_and_run, emit
 
 
 def run_logistic():

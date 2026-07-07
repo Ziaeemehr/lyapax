@@ -1,12 +1,12 @@
 """Tier 0.1: linear ODE, 3 distinct real eigenvalues. Same system/params as
 tests/test_lyapunov_core.py::test_linear_system_distinct_real_eigenvalues.
 """
+from _common import time_and_run, emit  # noqa: I001 -- must set JAX_PLATFORMS before jax import
+
 import jax.numpy as jnp
 
 from lyapax.core import ode_problem, lyapunov_spectrum
 from lyapax import systems
-
-from _common import time_and_run, emit
 
 
 def run(integrator):

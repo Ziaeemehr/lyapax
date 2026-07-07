@@ -1,12 +1,12 @@
 """Tier 4.2: linear scalar DDE, x'(t) = -a*x(t-tau). Same params as
 tests/test_dde.py::test_linear_scalar_dde_matches_lambert_w_root.
 """
+from _common import time_and_run, emit  # noqa: I001 -- must set JAX_PLATFORMS before jax import
+
 import jax.numpy as jnp
 
 from lyapax.dde import dde_problem, lyapunov_spectrum_dde
 from lyapax import systems
-
-from _common import time_and_run, emit
 
 
 def run(integrator):

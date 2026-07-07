@@ -80,9 +80,22 @@ lyapax itself.
   steady-state throughput. Both a first-call and warmed-up number will be
   reported, mirroring `examples/plot_07_speed_and_accuracy.py`'s existing
   practice for lyapax alone.
-- **Same machine, same run.** All tools run on the same dev machine, CPU
-  only (see `notes/milestones.md`'s GPU note — not applicable to any tool
-  here yet), in the same session, to avoid cross-machine noise.
+- **Same machine, same run.** All tools run on the same dev machine, in the
+  same session, to avoid cross-machine noise. jitcode/jitcdde/ChaosTools.jl
+  have no GPU backend, so only lyapax has a CPU and a GPU row; see the GPU
+  bullet below and the Performance section's GPU discussion.
+- **lyapax also runs each system on GPU** (`JAX_PLATFORMS=cuda`, forced via
+  `benchmarks/collect_results.py`'s dedicated GPU pass), tagged
+  `lyapax (GPU)`/`lyapax (RK6, GPU)` in the tables below to distinguish it
+  from the CPU rows. Getting a real CPU number here took a fix: every
+  `benchmarks/lyapax/*.py` script imported `jax`/`lyapax` (which import
+  `jax`) *before* `_common.py`, so `_common.py`'s
+  `os.environ.setdefault("JAX_PLATFORMS", "cpu")` ran after JAX had already
+  auto-selected the GPU present on this machine -- the "CPU" pass was
+  silently running on GPU. Fixed by importing `_common` first in every
+  script (see `benchmarks/lyapax/_common.py`'s `emit`, which also tags the
+  tool name with the backend `jax.default_backend()` actually used, as a
+  second line of defense against this class of bug recurring silently).
 
 ### Fairness notes (fill in as each comparison is actually run)
 
@@ -130,16 +143,16 @@ lyapax itself.
 | Component | Version | Notes |
 |---|---|---|
 | lyapax | `0.0.1` (editable) | `/home/ziaee/envs/lyapax` |
-| JAX | `0.10.2` | CPU only, `jax_enable_x64=True` |
-| jitcode | `1.7.3` | |
-| jitcdde | `1.8.3` | |
+| JAX | `0.10.2` | `jax_enable_x64=True`; CPU rows via `JAX_PLATFORMS=cpu` (default), GPU rows via `JAX_PLATFORMS=cuda` |
+| jitcode | `1.7.3` | CPU only, no GPU backend |
+| jitcdde | `1.8.3` | CPU only, no GPU backend |
 | symengine | `0.14.1` | jitcode/jitcdde's symbolic backend |
 | Julia | `1.12.1` | installed (`juliaup`) |
-| ChaosTools.jl | `3.5.4` | |
+| ChaosTools.jl | `3.5.4` | CPU only, no GPU backend |
 | DynamicalSystemsBase.jl | `3.15.7` | |
 | OrdinaryDiffEq.jl | `6.105.0` | |
 | StaticArrays.jl | `1.9.18` | |
-| Machine | (dev machine, CPU) | same GPU/cudnn limitation noted in `notes/milestones.md` M0 applies here too |
+| Machine | dev machine | CPU: multi-core x86_64; GPU: 1x NVIDIA RTX A5000 (`tests/test_gpu.py` confirms real Lyapunov computations run correctly on it, not just device enumeration) |
 
 ## Results — Accuracy
 
@@ -173,13 +186,13 @@ outside the markers instead.
 ### ODE systems (lyapax vs. jitcode vs. ChaosTools.jl)
 
 <!-- AUTO:ode-accuracy -->
-| System | lyapax | jitcode | ChaosTools.jl | Reference | Notes |
-|---|---|---|---|---|---|
-| Linear ODE (Tier 0.1) | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | exact `[-1, -2, -5]` | max abs diff from reference -- lyapax: `9.45e-07`, jitcode: `1.09e-05`, ChaosTools.jl: `8.76e-11` |
-| Lorenz λ1 (Tier 1.1/2) | `0.90671` | `0.90596` | `0.89674` | published `≈0.9056` | max abs diff from reference -- lyapax: `1.11e-03`, jitcode: `3.62e-04`, ChaosTools.jl: `8.86e-03` |
-| Lorenz sum(λ) | `-13.6666` | `-13.6667` | `-13.5228` | exact `-13.6667` (`-(σ+1+β)`) | max abs diff from reference -- lyapax: `1.02e-04`, jitcode: `1.57e-06`, ChaosTools.jl: `1.44e-01` |
-| Rössler λ1 (Tier 1.2/2) | `0.07565` | `0.07310` | `0.06205` | qualitative `≈0.07` | max abs diff from reference -- lyapax: `5.65e-03`, jitcode: `3.10e-03`, ChaosTools.jl: `7.95e-03` |
-| 4-node linear network (Tier 3.1) | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | exact `[-1, -2, -2, -3]` | max abs diff from reference -- lyapax: `5.70e-06`, jitcode: `2.42e-06`, ChaosTools.jl: `2.23e-06` |
+| System | lyapax | lyapax (RK6) | jitcode | ChaosTools.jl | Reference | Notes |
+|---|---|---|---|---|---|---|
+| Linear ODE (Tier 0.1) | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | exact `[-1, -2, -5]` | max abs diff from reference -- lyapax: `9.45e-07`, lyapax (RK6): `9.45e-07`, jitcode: `3.46e-05`, ChaosTools.jl: `8.76e-11` |
+| Lorenz λ1 (Tier 1.1/2) | `0.90172` | `0.90878` | `0.90587` | `0.89674` | published `≈0.9056` | max abs diff from reference -- lyapax: `3.88e-03`, lyapax (RK6): `3.18e-03`, jitcode: `2.67e-04`, ChaosTools.jl: `8.86e-03` |
+| Lorenz sum(λ) | `-13.6666` | `-13.6667` | `-13.6667` | `-13.5228` | exact `-13.6667` (`-(σ+1+β)`) | max abs diff from reference -- lyapax: `1.02e-04`, lyapax (RK6): `1.79e-09`, jitcode: `1.55e-06`, ChaosTools.jl: `1.44e-01` |
+| Rössler λ1 (Tier 1.2/2) | `0.07080` | `0.08017` | `0.07317` | `0.06205` | qualitative `≈0.07` | max abs diff from reference -- lyapax: `7.98e-04`, lyapax (RK6): `1.02e-02`, jitcode: `3.17e-03`, ChaosTools.jl: `7.95e-03` |
+| 4-node linear network (Tier 3.1) | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | exact `[-1, -2, -2, -3]` | max abs diff from reference -- lyapax: `3.53e-06`, lyapax (RK6): `3.53e-06`, jitcode: `2.86e-06`, ChaosTools.jl: `2.23e-06` |
 <!-- END AUTO:ode-accuracy -->
 
 ### Map systems (lyapax vs. ChaosTools.jl only)
@@ -189,18 +202,18 @@ outside the markers instead.
 |---|---|---|---|---|
 | Logistic map `r=4` (Tier 0.2) | `0.6931520` | `0.6931520` | `ln 2 = 0.6931472` | max abs diff from reference -- lyapax: `4.84e-06`, ChaosTools.jl: `4.84e-06` |
 | Tent map (Tier 0.2) | `0.6931472` | `0.6931472` | `ln 2 = 0.6931472` | max abs diff from reference -- lyapax: `1.11e-16`, ChaosTools.jl: `3.97e-13` |
-| Hénon map, sum(λ) (Tier 0.3) | `-1.203973` | `-1.203973` | `ln 0.3 = -1.203973` | max abs diff from reference -- lyapax: `4.44e-16`, ChaosTools.jl: `2.04e-14`; individual exponents: lyapax `[0.4209, -1.6248]`; ChaosTools.jl `[0.4191, -1.6231]` |
+| Hénon map, sum(λ) (Tier 0.3) | `-1.203973` | `-1.203973` | `ln 0.3 = -1.203973` | max abs diff from reference -- lyapax: `2.22e-16`, ChaosTools.jl: `2.04e-14`; individual exponents: lyapax `[0.4193, -1.6233]`; ChaosTools.jl `[0.4191, -1.6231]` |
 <!-- END AUTO:maps-accuracy -->
 
 ### DDE systems (lyapax vs. jitcdde)
 
 <!-- AUTO:dde-accuracy -->
-| System | lyapax | jitcdde | Reference | Notes |
-|---|---|---|---|---|
-| Linear scalar DDE (Tier 4.2) | `-0.59613` | `-0.59831` | Lambert W root `-0.598304` | max abs diff from reference -- lyapax: `2.17e-03`, jitcdde: `1.17e-06` |
-| Mackey-Glass λ1 (Tier 4.1) | `0.00193` | `0.00525` | qualitative `1e-03`-`1e-02` | lyapax inside band; jitcdde inside band |
-| Mackey-Glass KY dimension | `2.053` | `2.134` | `2.0`-`3.0` | lyapax inside band; jitcdde inside band |
-| 2-node delayed linear network (Tier 4.3) | not yet run | not yet run | Lambert W root (2x2) | deferred, see notes/benchmark_report.md Open TODOs |
+| System | lyapax | lyapax (RK6) | jitcdde | Reference | Notes |
+|---|---|---|---|---|---|
+| Linear scalar DDE (Tier 4.2) | `-0.60050` | `-0.60050` | `-0.59831` | Lambert W root `-0.598304` | max abs diff from reference -- lyapax: `2.19e-03`, lyapax (RK6): `2.19e-03`, jitcdde: `8.85e-07` |
+| Mackey-Glass λ1 (Tier 4.1) | `0.00796` | `0.00727` | `0.00520` | qualitative `1e-03`-`1e-02` | lyapax inside band; lyapax (RK6) inside band; jitcdde inside band |
+| Mackey-Glass KY dimension | `2.206` | `2.191` | `2.133` | `2.0`-`3.0` | lyapax inside band; lyapax (RK6) inside band; jitcdde inside band |
+| 2-node delayed linear network (Tier 4.3) | not yet run | not yet run | not yet run | Lambert W root (2x2) | deferred, see notes/benchmark_report.md Open TODOs |
 <!-- END AUTO:dde-accuracy -->
 
 ## Results — Performance
@@ -230,14 +243,14 @@ tool has a row for the given system (jitcode is ODE-only, jitcdde is
 DDE-only, so a given row never has both):
 
 <!-- AUTO:performance -->
-| System | lyapax (warm) | jitcode (warm) | jitcdde (warm) | ChaosTools.jl (warm) | lyapax (1st call) | jitcode (1st call) | jitcdde (1st call) | ChaosTools.jl (1st call) |
-|---|---|---|---|---|---|---|---|---|
-| Linear ODE (Tier 0.1) | `0.963s` | `0.242s` | -- | `0.003s` | `2.56s` | `1.04s` | -- | `5.64s` |
-| Lorenz | `1.873s` | `0.658s` | -- | `0.010s` | `3.40s` | `1.58s` | -- | `5.41s` |
-| Rössler | `5.310s` | `2.185s` | -- | `0.060s` | `6.81s` | `3.10s` | -- | `5.69s` |
-| 4-node network (Tier 3.1) | `1.006s` | `0.215s` | -- | `0.004s` | `2.93s` | `1.20s` | -- | `5.61s` |
-| Linear scalar DDE (Tier 4.2) | `0.785s` | -- | `0.018s` | -- | `2.52s` | -- | `1.10s` | -- |
-| Mackey-Glass | `1.548s` | -- | `11.398s` | -- | `3.55s` | -- | `17.36s` | -- |
+| System | lyapax (warm) | lyapax (RK6) (warm) | lyapax (GPU) (warm) | lyapax (RK6, GPU) (warm) | jitcode (warm) | jitcdde (warm) | ChaosTools.jl (warm) | lyapax (1st call) | lyapax (RK6) (1st call) | lyapax (GPU) (1st call) | lyapax (RK6, GPU) (1st call) | jitcode (1st call) | jitcdde (1st call) | ChaosTools.jl (1st call) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Linear ODE (Tier 0.1) | `0.265s` | `0.409s` | `0.904s` | `1.444s` | `0.190s` | -- | `0.003s` | `1.40s` | `0.45s` | `2.57s` | `1.56s` | `0.97s` | -- | `4.87s` |
+| Lorenz | `0.372s` | `0.598s` | `1.757s` | `3.400s` | `0.672s` | -- | `0.010s` | `1.46s` | `0.63s` | `3.47s` | `3.36s` | `1.55s` | -- | `4.91s` |
+| Rössler | `0.428s` | `0.692s` | `4.634s` | `9.175s` | `2.025s` | -- | `0.030s` | `1.53s` | `0.71s` | `6.29s` | `9.19s` | `2.87s` | -- | `5.06s` |
+| 4-node network (Tier 3.1) | `0.405s` | `0.674s` | `1.146s` | `2.239s` | `0.203s` | -- | `0.004s` | `1.50s` | `0.70s` | `2.90s` | `2.40s` | `1.16s` | -- | `5.48s` |
+| Linear scalar DDE (Tier 4.2) | `0.304s` | `0.414s` | `0.682s` | `0.852s` | -- | `0.017s` | -- | `1.49s` | `0.41s` | `2.47s` | `0.82s` | -- | `1.06s` | -- |
+| Mackey-Glass | `0.585s` | `0.880s` | `1.411s` | `1.988s` | -- | `9.766s` | -- | `2.08s` | `0.87s` | `3.41s` | `2.02s` | -- | `15.98s` | -- |
 <!-- END AUTO:performance -->
 
 Not in the table above (no natural equivalent in the other tools without
@@ -260,22 +273,38 @@ Notes on this table:
   signature once, and repeat calls with the same signature hit compiled
   native code with none of jitcode's per-call Python-object overhead or
   lyapax's per-call dispatch through the JAX runtime.
-- **ChaosTools.jl's 1st-call cost is the highest** (`~5.1s`-`5.4s`, dominated
+- **ChaosTools.jl's 1st-call cost is the highest** (`~4.9s`-`5.5s`, dominated
   by Julia's own package/method JIT compilation, not the problem size —
   note it's nearly *identical* across the small linear ODE and the
   200,000-step Rössler run, confirming it's fixed compile overhead, not
   problem-size-dependent).
-- **jitcdde's Mackey-Glass is the outlier**, `11.28s` warm — an order of
-  magnitude slower than every other warm number in this table. Likely
+- **jitcdde's Mackey-Glass is the outlier**, `~9.8s` warm — an order of
+  magnitude slower than every other CPU warm number in this table. Likely
   cause: `n_lyap=8` for a scalar DDE makes the augmented tangent system
   `1×(8+1)=9`-dimensional with a `tau_steps=17` history buffer that
   jitcdde tracks via Hermite-interpolated history splines (not a fixed
-  ring buffer, see `notes/milestones.md` M4's discussion of this exact
-  design tradeoff) — interpolation bookkeeping cost that lyapax's
-  fixed-size ring buffer doesn't pay. Not confirmed by profiling, flagged
-  as the likely explanation given the architecture, not a measured cause.
+  ring buffer) — interpolation bookkeeping cost that lyapax's fixed-size
+  ring buffer doesn't pay. Not confirmed by profiling, flagged as the
+  likely explanation given the architecture, not a measured cause.
+- **lyapax on GPU is slower than lyapax on CPU on every system in this
+  table** (e.g. Linear ODE: `0.265s` CPU vs `0.904s` GPU warm; Rössler
+  RK6: `0.692s` CPU vs `9.175s` GPU warm) — the opposite of what "GPU
+  support" might suggest, and expected: every system here has a
+  state-vector dimension in the single digits and a fixed-size, tightly
+  compiled step function, so per-step cost is dominated by kernel-launch
+  and host/device transfer latency, not floating-point throughput. A GPU
+  only wins once there's enough per-step arithmetic to amortize that fixed
+  overhead — the 200-node Kuramoto network below (and `plot_10_matrix_free_scaling.py`'s
+  CPU-only scaling curve, which shows the same *shape* of problem-size
+  dependence for the CPU-only jvp/vmap-vs-dense comparison) is the right
+  regime to look for a GPU win, not these deliberately small
+  cross-validation systems. `examples/plot_14_gpu_acceleration.py` makes
+  this crossover concrete: it sweeps network size and plots CPU vs. GPU
+  wall time side by side, so the point where GPU pulls ahead (if it does,
+  on a given machine's cudnn/driver setup) is a measured line crossing,
+  not an assertion.
 - **lyapax's warm times are consistently the middle of the pack** on these
-  small/medium problem sizes — its actual selling point (M6) is that its
+  small/medium problem sizes — its actual selling point is that its
   *relative* cost barely grows with problem size (`k`-scaling via
   matrix-free `jvp`, `vmap` batching over parameter grids), which the
   200-node row and the M6 internal numbers above demonstrate and which
@@ -329,6 +358,23 @@ system without ever materializing a dense Jacobian). The 200-node row in
 the performance table is the closest this report gets to demonstrating
 that regime, and even that undersells it (see M6's `d>300`,
 `k=5` benchmark for the sharper number).
+
+**GPU is not a free win, and this report's numbers show why.** lyapax is
+the only tool here with a GPU backend (`tests/test_gpu.py` already
+confirmed it computes the right answer on this machine's GPU; this report
+adds the *speed* side of that story), and on every system in the
+Performance table, GPU is slower than CPU, often by `3x`-`13x`. That's
+consistent with the same currency argument above: these benchmark systems
+were deliberately picked small (state dimension in the single digits) for
+cross-tool correctness comparison, not to be a fair GPU workload — a GPU's
+advantage is throughput on large parallel arithmetic, and it can't recoup
+kernel-launch and host/device-transfer latency when there's only a
+handful of floats to compute per step. `examples/plot_14_gpu_acceleration.py`
+demonstrates the actual regime GPU targets: it re-runs the same
+Kuramoto-network scaling sweep as `plot_10_matrix_free_scaling.py`, this
+time comparing CPU vs. GPU wall time as network size grows, so the
+crossover point (if any, on a given machine) is a measured result rather
+than a claim.
 
 **What this report doesn't cover, and why that's an acceptable gap for
 v1**: Kuramoto/sigmoidal coupling, delayed Kuramoto networks, and per-edge
