@@ -56,6 +56,7 @@ grid-snapped default has no sub-step history to read, so it stays O(dt)
 """
 # %%
 import os
+import warnings
 
 os.environ["JAX_PLATFORM_NAME"] = "cpu"
 
@@ -84,10 +85,16 @@ n_steps, renorm_every, t_transient = 40_000, 5, 20.0
 def _run(interpolate, integrator="heun"):
     errors, tau_used = [], []
     for dt in dts:
-        problem = dde_problem(
-            rhs, state0=jnp.array([1.0]), tau=tau, dt=dt,
-            integrator=integrator, interpolate=interpolate,
-        )
+        # The grid-snapped runs warn that tau rounds to tau_eff != tau at
+        # every dt here -- that mismatch is exactly what this demo measures
+        # (see the tau_eff column in the printed table), so the expected
+        # warning is silenced rather than repeated five times.
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="resolve_tau_steps")
+            problem = dde_problem(
+                rhs, state0=jnp.array([1.0]), tau=tau, dt=dt,
+                integrator=integrator, interpolate=interpolate,
+            )
         result = lyapunov_spectrum_dde(
             problem, n_steps=n_steps, k=1, renorm_every=renorm_every,
             t_transient=t_transient,
