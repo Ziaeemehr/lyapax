@@ -26,7 +26,7 @@ gives a smooth, monotonically shrinking error instead of a jumpy one.
 transcendental characteristic equation whose dominant root is a Lambert-W
 expression, giving an exact reference Lyapunov exponent to compare
 against at every ``dt`` -- the same system used in
-``plot_01_linear_ode.py``'s non-delayed counterpart, but here it lets this
+``01_linear_ode.py``'s non-delayed counterpart, but here it lets this
 demo measure *how the error behaves as dt shrinks*, not just its size at
 one ``dt``.
 

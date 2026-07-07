@@ -2,14 +2,14 @@
 Kuramoto network with delayed coupling: what transmission delay does
 ==========================================================================
 
-Extends ``plot_05_kuramoto_sync.py``'s zero-delay synchronization sweep to
+Extends ``05_kuramoto_sync.py``'s zero-delay synchronization sweep to
 a *delayed* Kuramoto network -- the same 6-oscillator, heterogeneous-
 frequency, all-to-all system, but now each oscillator feels its neighbors'
 phases as they were ``tau`` time units ago rather than instantaneously,
 via ``dtheta_i/dt = omega_i + (G/N) sum_j sin(theta_j(t-tau) - theta_i(t))``.
-Runs the same ``G`` sweep two ways -- zero delay (exactly ``plot_05``) and
+Runs the same ``G`` sweep two ways -- zero delay (exactly ``05_kuramoto_sync.py``) and
 ``tau=0.3`` (the delayed/DDE engine) -- and overlays ``lambda_2`` from
-both, since ``lambda_2`` is what tracks synchronization (see ``plot_05``'s
+both, since ``lambda_2`` is what tracks synchronization (see ``05_kuramoto_sync.py``'s
 docstring for why: ``lambda_1`` is pinned to 0 by the model's exact
 rotational symmetry and never signals anything).
 
@@ -27,26 +27,26 @@ parameters, not a foregone conclusion -- read the printed/plotted
 ``lambda_2`` curves rather than assuming the story below.
 
 **The machinery.** Both runs share the same ``ModelSpec``/dfun
-(``"omega + c"``) and ``kuramoto_coupling`` callable as ``plot_05``, wired
+(``"omega + c"``) and ``kuramoto_coupling`` callable as ``05_kuramoto_sync.py``, wired
 through one shared ``lyapax.Network`` topology object -- ``lyapax.coupling``
 builders are plain callables with no delay opinion baked in, so the same
 coupling function works whether the state it receives is instantaneous or
 delayed. The delay-0 run goes through ``lyapax.network_problem`` +
-``lyapax.lyapunov_spectrum``, the same front door ``plot_05`` itself now
+``lyapax.lyapunov_spectrum``, the same front door ``05_kuramoto_sync.py`` itself now
 uses, so the two produce exactly the same numbers; the delayed run goes
 through ``lyapax.network_dde_problem(..., tau=tau)`` (the *uniform*-delay
 branch -- a single global ``tau`` shared by every edge, not the per-edge
-``delay_steps`` matrix from ``plot_08_delayed_coupling.py``) +
+``delay_steps`` matrix from ``08_delayed_coupling.py``) +
 ``lyapax.lyapunov_spectrum_dde``. Both problem constructors are thin
 wrappers that build the ring buffer and resolve ``tau`` to whole ``dt``
-steps for you -- see ``plot_12_public_api_overview.py`` for the general
+steps for you -- see ``12_public_api_overview.py`` for the general
 problem-object recipe and ``notes/api_design_review.md`` for why it
 replaced the raw ``make_step_fn``/``constant_history_buf0`` call this
 script used to make directly.
 
-Note: like ``plot_05``, this sweeps ``G`` with a Python loop, one
+Note: like ``05_kuramoto_sync.py``, this sweeps ``G`` with a Python loop, one
 ``lyapunov_spectrum[_dde]`` call per point (see
-``plot_11_vmap_parameter_sweep.py`` for the batched-``vmap`` alternative on
+``11_vmap_parameter_sweep.py`` for the batched-``vmap`` alternative on
 the zero-delay engine). The delayed engine's tangent propagation costs
 O(k) forward passes per raw step (via ``jax.jvp``/``jax.vmap``, not a dense
 Jacobian -- see ``lyapax/dde.py``'s module docstring), which is why this is
@@ -95,7 +95,7 @@ t0 = time.perf_counter()
 for G in G_values:
     params = {"omega": omega, "G": float(G)}
 
-    # -- zero delay: exactly plot_05's engine, via the network_problem front door --
+    # -- zero delay: exactly 05_kuramoto_sync.py's engine, via the network_problem front door --
     problem_nodelay = lyapax.network_problem(
         dfun, network, kuramoto_coupling(alpha=0.0),
         params=params, state0=state0, dt=dt,

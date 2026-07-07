@@ -22,7 +22,7 @@ each map is already a one-step update, so ``lyapunov_spectrum`` calls
 ``jax.jacfwd(step_fn)`` directly on the map at every step to linearize it,
 then evolves the tangent (deviation-vector) matrix under that Jacobian and
 periodically re-orthonormalizes it via QR decomposition (the Benettin/QR
-method -- see ``plot_01_linear_ode.py`` for the full mechanics). Passing
+method -- see ``01_linear_ode.py`` for the full mechanics). Passing
 ``dt=1.0`` just labels each map iterate as one time unit, so the resulting
 exponents are directly per-iterate growth rates.
 """

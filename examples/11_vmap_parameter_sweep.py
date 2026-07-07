@@ -2,13 +2,13 @@
 vmap parameter sweeps: the same Kuramoto transition, one XLA call
 =======================================================================
 
-``plot_05_kuramoto_sync.py`` swept the coupling strength ``G`` with a plain
+``05_kuramoto_sync.py`` swept the coupling strength ``G`` with a plain
 Python ``for`` loop, one full ``lyapunov_spectrum`` call per ``G`` value.
 ``lyapax.sweep.sweep_lyapunov_spectrum`` does the same sweep as a single
 ``jax.vmap``-batched call instead -- one XLA program that computes every
 grid point together, rather than ``len(G_values)`` separate Python-level
 dispatches (each of which re-enters the JAX/XLA call machinery even when,
-as ``plot_07_speed_and_accuracy.py`` found, the compiled executable itself
+as ``07_speed_and_accuracy.py`` found, the compiled executable itself
 is cached across same-shape calls).
 
 **Why sweeping needs a different step function.** ``jax.vmap`` can only
@@ -25,7 +25,7 @@ or QR code needed, since batching a computation is orthogonal to what the
 computation itself does.
 
 **Correctness, not just speed.** The plot below reproduces
-``plot_05``'s figure using the vmap sweep instead of the Python loop; the
+``05_kuramoto_sync.py``'s figure using the vmap sweep instead of the Python loop; the
 values are compared point-by-point against a fresh Python-loop run of the
 exact same system below and printed as a max-abs-diff (should be at or
 near machine precision -- this is the same computation, just batched).
@@ -86,7 +86,7 @@ t_vmap = time.perf_counter() - t0
 print(f"vmap sweep ({n_sweep} points): {t_vmap:.2f}s")
 
 # %%
-# --- reference: the plot_05 Python loop, same system, same G values ---
+# --- reference: the 05_kuramoto_sync.py Python loop, same system, same G values ---
 loop_kwargs = {k: v for k, v in sweep_kwargs.items() if k != "dt"}
 t0 = time.perf_counter()
 lambda1_loop, lambda2_loop = [], []

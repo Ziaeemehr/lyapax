@@ -20,9 +20,9 @@ exactly what the run below shows -- not a hypothesis, it's what lyapax
 actually produces for this network.
 
 Note: this sweep calls ``lyapunov_spectrum`` once per ``G`` value in a
-plain Python loop; see ``examples/plot_11_vmap_parameter_sweep.py`` for the
+plain Python loop; see ``examples/11_vmap_parameter_sweep.py`` for the
 same sweep done as a single batched ``jax.vmap`` call instead, and
-``examples/plot_07_speed_and_accuracy.py`` for what the per-call cost is.
+``examples/07_speed_and_accuracy.py`` for what the per-call cost is.
 
 **The system.** 6 oscillators, all-to-all coupled (``weights`` is the
 complete graph: 1 everywhere off the diagonal, 0 on it), with
@@ -30,7 +30,7 @@ heterogeneous natural frequencies ``omega`` evenly spaced over ``[-1, 1]``
 so the population would never sync on its own -- staggered initial
 phases start it far from the locked state. The classic Kuramoto ODE
 ``dtheta_i/dt = omega_i + (G/N) sum_j sin(theta_j - theta_i)`` is built
-here from the same machinery as ``plot_04_linear_network.py``:
+here from the same machinery as ``04_linear_network.py``:
 ``ModelSpec``/``build_jax_dfun`` compile the bare node dynamics
 ``"omega + c"`` (``c`` is the coupling input) into a JAX function, and
 ``kuramoto_coupling`` supplies the sine-coupling term as ``c``;

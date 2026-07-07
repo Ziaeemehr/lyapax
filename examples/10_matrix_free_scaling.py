@@ -18,7 +18,7 @@ here applied to the plain (non-delayed) case. See
 for the correctness check (this script is purely about *cost*).
 
 **The comparison.** A Kuramoto network (same construction as
-``plot_05``/``plot_09``) at growing size ``d`` (= ``n_nodes``, one phase
+``05_kuramoto_sync.py``/``09_kuramoto_delayed_network.py``) at growing size ``d`` (= ``n_nodes``, one phase
 per node), tracking a fixed small ``k=5``. Both a hand-rolled dense-jacfwd
 step and the library's actual jvp/vmap step (the same code
 ``lyapax.core.lyapunov_spectrum`` runs internally) are JIT-compiled and

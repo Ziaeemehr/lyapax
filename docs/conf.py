@@ -33,7 +33,8 @@ html_static_path = ["_static"]
 sphinx_gallery_conf = {
     "examples_dirs": "../examples",
     "gallery_dirs": "auto_examples",
-    "filename_pattern": r"/plot_",
+    # Example files are named NN_topic.py (no plot_ prefix); execute them all.
+    "filename_pattern": r"/\d{2}_",
     "within_subsection_order": "FileNameSortKey",
     "remove_config_comments": True,
     "download_all_examples": False,

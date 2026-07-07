@@ -50,6 +50,17 @@ Every practical algorithm therefore periodically re-orthonormalizes a
 whole basis of perturbation vectors instead of tracking one — that is
 the Benettin/QR method described below.
 
+```{figure} ../_static/lyapunov_perturbation_growth.svg
+:alt: Growth of tangent perturbation vectors along a trajectory.
+:align: center
+:width: 50%
+
+Growth of perturbations along a trajectory, the local object averaged by
+Lyapunov exponents. Image: Mrocklin,
+[Wikimedia Commons](https://commons.wikimedia.org/wiki/File:LyapunovDiagram.svg),
+[CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).
+```
+
 ## Reading a spectrum: structural checks
 
 A few structural facts make Lyapunov spectra checkable, independent of

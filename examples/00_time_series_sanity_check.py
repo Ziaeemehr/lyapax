@@ -18,14 +18,14 @@ attributes, so ``simulate_trajectory`` and ``lyapunov_spectrum`` can share
 the exact same problem without re-deriving anything.
 
 **Single system.** The Lorenz system (also used in
-``plot_03_chaotic_flows.py``): the raw time series of ``x(t)`` should show
+``03_chaotic_flows.py``): the raw time series of ``x(t)`` should show
 the signature back-and-forth between the two lobes of the attractor, and
 ``z(t)`` should stay positive -- both are quick visual checks that this is
 really behaving like the Lorenz attractor, not, say, diverging because of a
 sign error in the right-hand side.
 
 **Coupled network.** The 4-node linear network from
-``plot_04_linear_network.py``: every eigenvalue of its Jacobian is
+``04_linear_network.py``: every eigenvalue of its Jacobian is
 negative, so every node's time series should decay toward 0. A network
 step function built with ``network_problem`` has exactly the same
 ``state -> new_state`` shape as a plain ODE step, so

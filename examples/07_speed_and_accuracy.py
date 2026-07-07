@@ -11,7 +11,7 @@ Two practical questions before trusting lyapax on a new problem:
    step ``dt`` decreases, and how much does that depend on which
    integrator computes each step?
 
-Both use the Lorenz system from ``plot_03_chaotic_flows.py`` as the test
+Both use the Lorenz system from ``03_chaotic_flows.py`` as the test
 case: it's genuinely chaotic (so representative of a real workload,
 unlike the linear/map toy systems) yet still has the exact
 ``sum(lambda) = -(sigma + 1 + beta)`` invariant to measure error against,
@@ -74,8 +74,8 @@ print(
     "explicitly. It's not a guarantee, though: a *different* shape "
     "(n_steps, k, renorm_every, or state dimension) still pays the full "
     "trace+compile cost. For a parameter sweep at the same shapes -- e.g. "
-    "scanning a coupling strength G, as in plot_05_kuramoto_sync.py -- "
-    "see plot_11_vmap_parameter_sweep.py: batching the whole sweep into "
+    "scanning a coupling strength G, as in 05_kuramoto_sync.py -- "
+    "see 11_vmap_parameter_sweep.py: batching the whole sweep into "
     "one jax.vmap call sidesteps the repeated-call overhead entirely, "
     "rather than just relying on this incidental compilation-cache reuse."
 )

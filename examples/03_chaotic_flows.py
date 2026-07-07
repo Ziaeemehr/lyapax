@@ -8,7 +8,7 @@ directly-computable phase-space divergence) as well as published values.
 See Tiers 1 and 2 in ``notes/validation_systems.md``.
 
 **The systems.** Both are genuinely chaotic, so unlike
-``plot_01_linear_ode.py`` and ``plot_02_chaotic_maps.py`` there is no
+``01_linear_ode.py`` and ``02_chaotic_maps.py`` there is no
 closed-form value for the individual exponents to check against -- only a
 structural invariant plus a published reference value for ``lambda1``.
 For the Lorenz system, ``trace(J) = -(sigma + 1 + beta)`` is *constant*
@@ -21,9 +21,9 @@ trajectory's time-averaged ``<x>``, computed here from a second,
 independent run (``simulate_trajectory``) -- a weaker but still exact
 identity, ``sum(lambda) = a - c + <x>``.
 
-**The method.** Same Benettin/QR engine as ``plot_01_linear_ode.py``, just
+**The method.** Same Benettin/QR engine as ``01_linear_ode.py``, just
 with a nonlinear ``rhs`` (linearized freshly at each step via
-``jax.jacfwd``, as in ``plot_02_chaotic_maps.py``) and a much longer
+``jax.jacfwd``, as in ``02_chaotic_maps.py``) and a much longer
 transient/run to let the trajectory settle onto the attractor and the
 running exponent estimates average out their fluctuations -- chaotic
 flows converge far more slowly and noisily than the linear or

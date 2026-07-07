@@ -13,7 +13,7 @@ neighbors; with ``linear_coupling(a=1, b=0)`` that input is
 ``c_i = G * sum_j w[i, j] x_j``, i.e. a matrix-vector product against the
 adjacency matrix ``W``. Stacking all nodes, the whole network is therefore
 the single linear ODE ``x' = (gamma*I + G*W) x`` -- the same kind of exact
-eigenvalue check as ``plot_01_linear_ode.py``, except now ``A`` is
+eigenvalue check as ``01_linear_ode.py``, except now ``A`` is
 *assembled* from a graph and a coupling rule instead of being handed to
 the engine directly, so this validates that assembly rather than the core
 QR bookkeeping. ``W`` here is a 4-node cycle graph (a-b-c-d-a), which is
@@ -34,7 +34,7 @@ above) and a Heun integrator into the flat ``state -> new_state`` function
 ``(n_state_vars, n_nodes)`` layout and the flat vector the QR engine
 operates on -- while also bundling ``state0``/``dt`` alongside it, the
 same problem-object recipe ``ode_problem`` gives the plain-ODE case in
-``plot_01_linear_ode.py``.
+``01_linear_ode.py``.
 """
 # %%
 import os 

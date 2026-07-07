@@ -7,7 +7,7 @@ coupled through each other's *delayed* state,
 ``x1' = gamma*x1 + G*x2(t-tau)``, ``x2' = gamma*x2 + G*x1(t-tau)``. This
 sweeps the delay ``tau`` itself, to show what delayed coupling does to the
 spectrum -- how it differs from the zero-delay case in
-``plot_04_linear_network.py``.
+``04_linear_network.py``.
 
 **Why this system.** Its characteristic equation is tractable: the
 symmetric mode (``x1=x2``) gives ``lambda_sym = gamma +
@@ -40,8 +40,8 @@ tangent directions via QR, the same Benettin's-method idea as the
 non-delayed engine, just carrying delay history alongside the state.
 
 Deliberately staying low-level here: ``network_dde_problem`` (the
-problem-object front door used by ``plot_09_kuramoto_delayed_network.py``
-and ``plot_12_public_api_overview.py``) only covers a single *uniform*
+problem-object front door used by ``09_kuramoto_delayed_network.py``
+and ``12_public_api_overview.py``) only covers a single *uniform*
 delay shared by every edge, and explicitly rejects a per-edge
 ``delay_steps`` matrix like the one this script needs -- see that
 function's docstring. A per-edge delay matrix combined with a custom

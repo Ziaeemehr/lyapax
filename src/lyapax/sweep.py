@@ -45,7 +45,7 @@ def sweep_lyapunov_spectrum(
     Batched ``lyapunov_spectrum`` over a grid of parameter values (and,
     optionally, a matching grid of initial conditions) via one ``jax.vmap``
     call, rather than a Python loop making one call per grid point (as in
-    e.g. ``examples/plot_05_kuramoto_sync.py``/``plot_09_kuramoto_delayed_network.py``).
+    e.g. ``examples/05_kuramoto_sync.py``/``09_kuramoto_delayed_network.py``).
 
     step_fn : ``(state, params) -> new_state`` -- ``params`` must be a
         call-time argument, *not* closed over. See
