@@ -27,8 +27,18 @@ myst_heading_anchors = 3
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
-html_theme = "furo"
+html_theme = "sphinx_book_theme"
 html_static_path = ["_static"]
+html_logo = "_static/lyapax_logo.svg"
+html_theme_options = {
+    "repository_url": "https://github.com/Ziaeemehr/lyapax",
+    "use_repository_button": True,
+    "show_toc_level": 2,
+    "navigation_with_keys": True,
+}
+html_context = {
+    "default_mode": "light",
+}
 
 sphinx_gallery_conf = {
     "examples_dirs": "../examples",

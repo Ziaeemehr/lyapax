@@ -49,7 +49,7 @@ examples = [
 docs = [
     "sphinx>=7",
     "sphinx-gallery>=0.15",
-    "furo>=2024.1",
+    "sphinx-book-theme>=1.1",
     "matplotlib>=3.7",
     "myst-parser>=2.0",
 ]
