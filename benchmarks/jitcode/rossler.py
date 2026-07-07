@@ -1,7 +1,6 @@
 """Tier 1.2/2: Rossler system. Same params as benchmarks/lyapax/rossler.py."""
+from _common import emit, run_lyap_spectrum, time_build_and_run
 from jitcode import jitcode_lyap, y
-
-from _common import time_build_and_run, run_lyap_spectrum, emit
 
 
 def build():

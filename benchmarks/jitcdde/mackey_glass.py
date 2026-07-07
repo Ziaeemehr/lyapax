@@ -1,8 +1,7 @@
 """Tier 4.1: Mackey-Glass. Same params as benchmarks/lyapax/mackey_glass.py."""
 import numpy as np
-from jitcdde import jitcdde_lyap, y, t
-
-from _common import time_build_and_run, run_lyap_spectrum, emit
+from _common import emit, run_lyap_spectrum, time_build_and_run
+from jitcdde import jitcdde_lyap, t, y
 
 
 def _kaplan_yorke_dimension(exponents: np.ndarray) -> float:

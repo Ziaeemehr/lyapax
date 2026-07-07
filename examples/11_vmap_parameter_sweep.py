@@ -36,20 +36,21 @@ near machine precision -- this is the same computation, just batched).
 """
 # %%
 import os
+
 os.environ["JAX_PLATFORM_NAME"] = "cpu"
 import time
 
-import matplotlib.pyplot as plt
-import numpy as np
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
 
 jax.config.update("jax_enable_x64", True)
 
 from lyapax.core import lyapunov_spectrum
 from lyapax.coupling import kuramoto_coupling
 from lyapax.network import Network, network_problem, network_step_parametrized
-from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
+from lyapax.simulator import ModelSpec, Parameter, StateVar, build_jax_dfun
 from lyapax.sweep import sweep_lyapunov_spectrum
 
 # %%

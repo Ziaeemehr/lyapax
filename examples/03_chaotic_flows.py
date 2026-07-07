@@ -36,20 +36,21 @@ flows converge far more slowly and noisily than the linear or
 map examples.
 """
 # %%
+import os
 import time
-import os 
+
 os.environ["JAX_PLATFORM_NAME"] = "cpu"
 
-import matplotlib.pyplot as plt
-import numpy as np
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
 
 jax.config.update("jax_enable_x64", True)
 
+from lyapax import systems
 from lyapax.core import lyapunov_spectrum, ode_problem
 from lyapax.utils import simulate_trajectory
-from lyapax import systems
 
 # %%
 # Lorenz: trace(J) = -(sigma + 1 + beta) is constant, so sum(LE) is known

@@ -1,9 +1,8 @@
 """Tier 0.1: linear ODE, 3 distinct real eigenvalues. Same system/params as
 benchmarks/lyapax/linear_ode.py / tests/test_lyapunov_core.py's version.
 """
+from _common import emit, run_lyap_spectrum, time_build_and_run
 from jitcode import jitcode_lyap, y
-
-from _common import time_build_and_run, run_lyap_spectrum, emit
 
 
 def build():

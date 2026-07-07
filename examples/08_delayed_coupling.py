@@ -55,19 +55,27 @@ form for that reason, not because it predates the new API.
 """
 # %%
 import os
+
 os.environ["JAX_PLATFORM_NAME"] = "cpu"
 import time
 
-import matplotlib.pyplot as plt
-import numpy as np
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
 from scipy.special import lambertw
 
 jax.config.update("jax_enable_x64", True)
 
-from lyapax.dde import lyapunov_spectrum_dde, constant_history_buf0
-from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun, make_step_fn, Connectivity
+from lyapax.dde import constant_history_buf0, lyapunov_spectrum_dde
+from lyapax.simulator import (
+    Connectivity,
+    ModelSpec,
+    Parameter,
+    StateVar,
+    build_jax_dfun,
+    make_step_fn,
+)
 
 # %%
 gamma, G, dt = -1.0, 0.5, 1e-3

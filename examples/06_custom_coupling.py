@@ -34,18 +34,19 @@ exact-eigenvalue check
 bit-for-bit in spirit, just for this smaller network.
 """
 # %%
-import os 
+import os
+
 os.environ["JAX_PLATFORM_NAME"] = "cpu"
 
-import numpy as np
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 jax.config.update("jax_enable_x64", True)
 
 from lyapax.core import lyapunov_spectrum
 from lyapax.network import Network, network_problem
-from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
+from lyapax.simulator import ModelSpec, Parameter, StateVar, build_jax_dfun
 
 
 # %%

@@ -40,21 +40,22 @@ the same simulation, not two separate things to set up.
 """
 # %%
 import os
+
 os.environ["JAX_PLATFORM_NAME"] = "cpu"
 
-import matplotlib.pyplot as plt
-import numpy as np
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
 
 jax.config.update("jax_enable_x64", True)
 
+from lyapax import systems
 from lyapax.core import lyapunov_spectrum, ode_problem
-from lyapax.utils import simulate_trajectory
 from lyapax.coupling import linear_coupling
 from lyapax.network import Network, network_problem
-from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
-from lyapax import systems
+from lyapax.simulator import ModelSpec, Parameter, StateVar, build_jax_dfun
+from lyapax.utils import simulate_trajectory
 
 # %%
 # Lorenz: simulate first, look at the raw time series of each state
@@ -117,7 +118,9 @@ problem_net = network_problem(
 )
 
 n_steps_net = 4_000
-t_net, traj_net = simulate_trajectory(problem_net.step_fn, problem_net.state0, n_steps_net, dt=dt_net)
+t_net, traj_net = simulate_trajectory(
+    problem_net.step_fn, problem_net.state0, n_steps_net, dt=dt_net,
+)
 t_net, traj_net = np.array(t_net), np.array(traj_net)
 
 fig, ax = plt.subplots(figsize=(7, 4))

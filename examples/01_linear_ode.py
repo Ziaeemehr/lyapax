@@ -29,20 +29,20 @@ below, which converges to ``Re(eigvals(A))`` as the average washes out
 the initial transient.
 """
 # %%
-import time
 import os
+import time
 
 os.environ["JAX_PLATFORM_NAME"] = "cpu"
 
-import matplotlib.pyplot as plt
-import numpy as np
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
 
 jax.config.update("jax_enable_x64", True)
 
-from lyapax.core import lyapunov_spectrum, ode_problem
 from lyapax import systems
+from lyapax.core import lyapunov_spectrum, ode_problem
 
 # %%
 # Distinct real eigenvalues, no coupling, no chaos. ``ode_problem`` turns

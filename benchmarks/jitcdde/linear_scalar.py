@@ -1,9 +1,8 @@
 """Tier 4.2: linear scalar DDE, x'(t) = -a*x(t-tau). Same params as
 benchmarks/lyapax/linear_scalar_dde.py.
 """
-from jitcdde import jitcdde_lyap, y, t
-
-from _common import time_build_and_run, run_lyap_spectrum, emit
+from _common import emit, run_lyap_spectrum, time_build_and_run
+from jitcdde import jitcdde_lyap, t, y
 
 
 def build():

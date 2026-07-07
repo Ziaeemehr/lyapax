@@ -40,19 +40,20 @@ same problem-object recipe ``ode_problem`` gives the plain-ODE case in
 :ref:`01_linear_ode.py <sphx_glr_auto_examples_01_linear_ode.py>`.
 """
 # %%
-import os 
+import os
+
 os.environ["JAX_PLATFORM_NAME"] = "cpu"
-import matplotlib.pyplot as plt
-import numpy as np
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
 
 jax.config.update("jax_enable_x64", True)
 
 from lyapax.core import lyapunov_spectrum
 from lyapax.coupling import linear_coupling
 from lyapax.network import Network, network_problem
-from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
+from lyapax.simulator import ModelSpec, Parameter, StateVar, build_jax_dfun
 
 # %%
 # 4-cycle graph adjacency (symmetric -> real eigenvalues): {2, 0, 0, -2}.

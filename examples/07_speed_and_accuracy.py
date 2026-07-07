@@ -30,21 +30,21 @@ RK6's steeper slope also means it reaches a given error at a much larger
 limiting how few steps a run can get away with.
 """
 # %%
-import os 
+import os
+
 os.environ["JAX_PLATFORM_NAME"] = "cpu"
 
 import time
 
-import matplotlib.pyplot as plt
-import numpy as np
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
 
 jax.config.update("jax_enable_x64", True)
 
+from lyapax import systems
 from lyapax.core import lyapunov_spectrum, ode_problem
 from lyapax.integrators import rk4_step, rk6_step
-from lyapax import systems
 
 # %%
 # --- Speed vs k, and first-call vs second-call ---

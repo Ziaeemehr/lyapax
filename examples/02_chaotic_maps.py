@@ -31,17 +31,18 @@ exponents are directly per-iterate growth rates.
 # %%
 
 import os
+
 os.environ["JAX_PLATFORM_NAME"] = "cpu"
 
-import matplotlib.pyplot as plt
-import numpy as np
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
 
 jax.config.update("jax_enable_x64", True)
 
-from lyapax.core import lyapunov_spectrum
 from lyapax import systems
+from lyapax.core import lyapunov_spectrum
 
 # %%
 # Logistic map at r=4: exactly conjugate to the tent map, exact LE = ln(2).

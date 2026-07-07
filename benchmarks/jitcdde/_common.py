@@ -36,7 +36,9 @@ def run_lyap_spectrum(DDE, past_value, dt, n_steps, renorm_every, t_transient):
 
     local_lyaps = np.vstack(local_lyaps)
     weights = np.array(weights)
-    exponents = np.average(local_lyaps[n_transient_blocks:], weights=weights[n_transient_blocks:], axis=0)
+    exponents = np.average(
+        local_lyaps[n_transient_blocks:], weights=weights[n_transient_blocks:], axis=0,
+    )
     return np.sort(exponents)[::-1]
 
 

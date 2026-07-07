@@ -34,17 +34,17 @@ import os
 
 os.environ["JAX_PLATFORM_NAME"] = "cpu"
 
-import matplotlib.pyplot as plt
-import numpy as np
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
 from scipy.special import lambertw
 
 jax.config.update("jax_enable_x64", True)
 
 import lyapax
 from lyapax import coupling as lc
-from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
+from lyapax.simulator import ModelSpec, Parameter, StateVar, build_jax_dfun
 
 # %%
 # 1. Plain ODE: ``ode_problem(rhs, state0, dt, integrator=...)``

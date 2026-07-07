@@ -3,9 +3,8 @@ benchmarks/lyapax/network.py. Expressed as a flat ODE, dx_i/dt = gamma*x_i +
 G*sum_j W_ij*x_j, since jitcode has no network/coupling abstraction of its
 own.
 """
+from _common import emit, run_lyap_spectrum, time_build_and_run
 from jitcode import jitcode_lyap, y
-
-from _common import time_build_and_run, run_lyap_spectrum, emit
 
 
 def build():
