@@ -156,14 +156,78 @@ system, delayed or not, regardless of the base method's nominal order.
 
 Full writeup: `notes/stepping_accuracy_review.md`, Part C.
 
-## 4. Adaptive ODE integration -- not started
+## 4. Adaptive ODE integration -- not started; decided to depend on diffrax, not hand-roll
 
 A design exists (`notes/stepping_accuracy_review.md`, Part A: an
 `integrator` value backed by `jax.lax.while_loop`, `dt` kept as the
 outer sampling interval rather than the integrator's own step size), but
-no implementation has been written. Open questions there: hand-rolled
-embedded pair vs. depending on `diffrax`; non-smoothness at accept/reject
-boundaries when differentiating w.r.t. a system parameter.
+no implementation has been written. That note left open "hand-rolled
+embedded pair vs. depending on `diffrax`" -- discussion below (2026-07-07)
+resolves that question in favor of depending on `diffrax`, and records
+what the integration work actually involves.
+
+### Decision: depend on diffrax (as a library), don't hand-roll
+
+Re-checked 2026-07-07: `diffrax` still has no DDE support (open feature
+request `patrick-kidger/diffrax#406`, unresolved since April 2024) --
+confirms the M0-era finding still holds. So the ODE/DDE split is forced,
+not a preference:
+
+- **ODE: use diffrax.** Hand-rolling an adaptive, *differentiable*
+  integrator means re-deriving embedded RK Butcher tableaus, error
+  estimators, PID step-size control, and -- the part that matters most --
+  adjoint-safe gradients through adaptive stepping (this note's own
+  flagged risk: "non-smoothness at accept/reject boundaries when
+  differentiating w.r.t. a system parameter"). That's deep, error-prone
+  numerical work diffrax has already solved and battle-tested; the
+  strategic move is to depend on it, not compete with it. This also
+  reinforces item 6's "differentiate through the exponent itself"
+  priority, rather than working against it.
+- **DDE: still ours.** No JAX library covers this. Fixed-step +
+  `interpolate=True` + rk4 already reaches the Hermite-interpolant
+  accuracy ceiling (item 1's resolution) -- keep full adaptive-step DDE
+  gated on a concrete need (stiff/multi-timescale delayed systems) per
+  item 5, rather than building it preemptively just because ODE gets
+  adaptivity.
+
+### What "depend on diffrax" actually requires (still real, but bounded)
+
+The integration isn't a drop-in swap, because lyapax's Benettin engine
+isn't shaped like diffrax's typical usage (`diffeqsolve` over a whole
+interval). Three structural changes, all on lyapax's side of the
+boundary:
+
+1. **Renorm cadence: step-count -> elapsed-time.** `core.py`'s
+   `_advance` runs a fixed-length `lax.scan` of `renorm_every` raw steps
+   between QR renormalizations. Adaptive stepping doesn't take a fixed
+   number of steps per unit time, so this becomes "run accepted steps
+   until elapsed time reaches the next renorm boundary" -- a bounded
+   `lax.while_loop`, not a fixed-length `scan`.
+2. **Tangent propagation rides diffrax's per-step primitive, not
+   `diffeqsolve`.** Currently `jax.jvp(step_fn, (state,), (y_col,))` per
+   tracked tangent column, vmapped over k (the k << d partial-spectrum
+   cost advantage). `diffeqsolve` runs its own internal loop end-to-end
+   and doesn't compose with that per-step jvp trick. Use diffrax's
+   lower-level `solver.step()` (the primitive `diffeqsolve` itself is
+   built on) as the atomic unit inside our own loop instead.
+3. **`stop_gradient` on the step-size decision.** Gradient must flow
+   through the accepted RK update but not through the controller's
+   accept/reject/dt choice. `diffeqsolve`'s adjoint handles this
+   internally; using the lower-level stepping API means lyapax owns
+   getting that `stop_gradient` placement right.
+
+### API impact: none visible to callers
+
+`ode_problem(rhs, state0, dt, integrator="dopri5")` (or a separate
+`adaptive_ode_problem(...)`) feeding the same
+`lyapunov_spectrum(problem, n_steps=...)` call shape. The one internal
+casualty is `ODEProblem.step_fn`'s single-function contract (`state ->
+new_state`) -- adaptive stepping needs an extra threaded carry (solver
+state, current `t`), so that becomes an internal detail, not a
+user-facing function.
+
+Not yet turned into an implementation plan or milestone entry -- this is
+a design decision recorded for later, not started work.
 
 ## 5. Combined adaptive-step DDE -- correctly out of scope for now
 
@@ -171,3 +235,73 @@ Would need history interpolation over an *irregular* grid (since an
 adaptive integrator's own sample times aren't evenly spaced), which is
 substantially harder than either item 3/4 alone. Not worth attempting
 until items 1 and 4 are each resolved independently.
+
+## 6. Feature roadmap: next-level capabilities (added 2026-07-07)
+
+Not a bug-tracking item like 1-5 above -- a strategy note on where to grow
+next, prompted by the question of whether lyapax should chase feature
+parity with ChaosTools.jl/DynamicalSystems.jl.
+
+### Recommendation: stay narrow, don't chase ChaosTools.jl's breadth
+
+ChaosTools.jl is one piece of a decade-old, many-contributor ecosystem
+(DynamicalSystems.jl: DelayEmbeddings, RecurrenceAnalysis,
+ComplexityMeasures.jl, Attractors.jl, ...) covering recurrence
+quantification, fractal/correlation dimensions, entropy/complexity
+measures, periodic-orbit detection, basin-of-attraction mapping, delay
+embeddings, surrogate testing. None of that shares lyapax's
+tangent-propagation core (`core.py`'s Benettin/QR scan) -- adding it
+would mean bolting a second, weaker product onto the Lyapunov engine
+rather than extending it, and users who want that breadth already have
+Julia. lyapax's real advantage is JAX itself -- `jit`/`vmap`/GPU, and
+above all differentiability through the exponent computation, which
+ChaosTools.jl cannot offer (no reverse-mode AD through their solver
+stack). "Next level" should mean depth along that axis, not breadth
+toward a Julia clone.
+
+### Fits the existing engine -- worth prioritizing
+
+1. **Differentiate through the Lyapunov exponent itself.** Since
+   `lyapunov_spectrum` is an all-JAX QR/Benettin `lax.scan`,
+   `jax.grad`/`jax.jacrev` of an exponent w.r.t. a system parameter is
+   plausibly already mechanically possible, or close to it. This is the
+   single capability every comparable tool (ChaosTools.jl, jitcode,
+   nolds) lacks. Concretely: (a) audit/test that `grad(lambda_max)`
+   w.r.t. a `rhs` parameter produces a sane, finite gradient end to end
+   (QR has non-smooth points -- ties/sign flips in `Q` -- worth
+   understanding where those bite); (b) if it works, document and
+   demo it as a first-class feature, not a footnote. Likely the highest-
+   leverage single addition -- it's the thing no one else has, not one
+   more thing everyone else already has.
+2. **Kaplan-Yorke (Lyapunov) dimension.** Pure post-processing of an
+   existing `LyapunovResult.exponents` (find where cumulative sum
+   crosses zero, interpolate). No new machinery, cheap, standard
+   companion metric to a Lyapunov spectrum -- easy win.
+3. **Covariant Lyapunov Vectors (CLVs).** A natural extension of the
+   forward QR pass already in `core.py`'s `_advance`/`_renorm_block` --
+   needs a backward pass through the stored `R` factors (Ginelli et
+   al.'s algorithm). Gives Oseledets-direction/hyperbolicity information
+   beyond the exponents themselves; reuses the existing scan structure
+   rather than introducing a new one.
+4. **Finite-time / local Lyapunov exponents.** `LyapunovResult.history`
+   already carries the running per-block estimate; formalizing a
+   windowed/local variant (rather than only the long-horizon average) is
+   a small delta and useful for spotting intermittency or regime changes
+   along a trajectory.
+5. **Adaptive-step ODE integration (diffrax).** Already tracked as an
+   M7/M8 stretch goal in `notes/milestones.md`; still the most-cited gap
+   in `docs/background/capabilities.md` ("No adaptive or stiff ODE
+   integration").
+6. **State-dependent delays.** Ambitious, already an explicit non-goal
+   for v1 (`notes/milestones.md`). Revisit only after item 4 above (in
+   this file's numbering) and diffrax integration have landed.
+
+### Explicitly not chasing
+
+Recurrence quantification analysis, fractal/correlation dimension
+estimators, entropy/complexity measures, delay-embedding reconstruction,
+periodic-orbit search, basin-of-attraction mapping -- all mature and
+well-served by ChaosTools.jl/DynamicalSystems.jl already. Weaker
+reimplementations wouldn't help users who have Julia access, and would
+dilute lyapax's actual identity: a JAX-native, differentiable Lyapunov
+engine, not a general nonlinear-timeseries toolkit.
