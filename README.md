@@ -81,10 +81,15 @@ differentiating through an augmented `(state, ring_buffer)` carry.
   `rk4_step`/`euler_step` step functions, or Euler/Heun/RK6 via
   `lyapax.simulator`). Exponents are for the numerical time-`dt` map, not
   an exact flow — check `dt`-convergence for anything you report.
-- **DDE delays are integer-step only.** A physical delay `tau` is rounded
-  to the nearest multiple of `dt` (`lyapax.dde.resolve_tau_steps`); there
-  is no sub-step interpolation. Use `lyapax.dde.tau_eff` to see the delay
-  actually used, and shrink `dt` to converge it toward `tau`.
+- **DDE delays must be known and fixed**, resolved one of two ways. By
+  default (grid-snapped), a physical delay `tau` is rounded to the
+  nearest multiple of `dt` (`lyapax.dde.resolve_tau_steps`); use
+  `lyapax.dde.tau_eff` to see the delay actually used, and shrink `dt` to
+  converge it toward `tau`. Passing `interpolate=True` instead
+  reconstructs the delayed history with a cubic-Hermite interpolant,
+  removing that rounding on the uniform-delay path at some extra cost —
+  see `13_dde_history_interpolation.py` and
+  `docs/background/lyapax_implementation.md`.
 - **`history` columns are ordered once**, by the final row. Near-
   degenerate exponents can swap order over the run — see
   `LyapunovResult.history`'s docstring.
