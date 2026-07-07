@@ -5,6 +5,7 @@
 # lyapax
 
 [![CI](https://github.com/Ziaeemehr/lyapax/actions/workflows/ci.yml/badge.svg)](https://github.com/Ziaeemehr/lyapax/actions/workflows/ci.yml)
+[![Documentation Status](https://readthedocs.org/projects/lyapax/badge/?version=latest)](https://lyapax.readthedocs.io/en/latest/?badge=latest)
 
 JAX-native Lyapunov exponent computation for ODEs and DDEs, via the
 Benettin/QR method with `jax.jvp`/`jax.vmap` tangent propagation.
