@@ -78,3 +78,6 @@ Desktop.ini
 # Local assistant/editor metadata
 .clinerules
 .github/copilot-instructions.md
+
+*.pdf
+*.jats
