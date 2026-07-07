@@ -46,15 +46,14 @@ import jax
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
-from lyapax import lyapunov_spectrum, rk4_step
+from lyapax import lyapunov_spectrum, ode_problem
 from lyapax import systems
 
 rhs = systems.lorenz(sigma=10.0, rho=28.0, beta=8.0 / 3.0)
-step = rk4_step(rhs, dt=1e-2)
+problem = ode_problem(rhs, state0=jnp.array([1.0, 1.0, 1.0]), dt=1e-2)
 
 result = lyapunov_spectrum(
-    step, state0=jnp.array([1.0, 1.0, 1.0]),
-    dt=1e-2, n_steps=50_000, renorm_every=10, t_transient=100.0,
+    problem, n_steps=50_000, renorm_every=10, t_transient=100.0,
 )
 print(result.exponents)  # ~ [0.906, 0.0, -14.57]
 ```
@@ -78,9 +77,10 @@ differentiating through an augmented `(state, ring_buffer)` carry.
 **What this does *not* do:**
 
 - **No adaptive/stiff ODE solvers.** `step_fn` is whatever fixed-step map
-  you hand it (`rk4_step`/`euler_step` in `lyapax.integrators`, or Euler/
-  Heun via `lyapax.simulator`). Exponents are for the numerical time-`dt`
-  map, not an exact flow — check `dt`-convergence for anything you report.
+  you hand it (`ode_problem(..., integrator="rk4")` by default, direct
+  `rk4_step`/`euler_step` step functions, or Euler/Heun/RK6 via
+  `lyapax.simulator`). Exponents are for the numerical time-`dt` map, not
+  an exact flow — check `dt`-convergence for anything you report.
 - **DDE delays are integer-step only.** A physical delay `tau` is rounded
   to the nearest multiple of `dt` (`lyapax.dde.resolve_tau_steps`); there
   is no sub-step interpolation. Use `lyapax.dde.tau_eff` to see the delay
@@ -92,22 +92,25 @@ differentiating through an augmented `(state, ring_buffer)` carry.
 ## Examples
 
 Runnable, sphinx-gallery-formatted demos in `examples/` (`pip install
--e ".[examples]"`, then `python examples/plot_01_linear_ode.py`):
+-e ".[examples]"`, then `python examples/01_linear_ode.py`):
 
 | File | Task |
 |---|---|
-| `plot_00_time_series_sanity_check.py` | Inspecting the raw simulated time series before computing exponents |
-| `plot_01_linear_ode.py` | Exact-eigenvalue sanity check for the QR engine |
-| `plot_02_chaotic_maps.py` | 1D/2D maps with closed-form exponents |
-| `plot_03_chaotic_flows.py` | Lorenz/Rössler, the standard chaotic-ODE benchmarks |
-| `plot_04_linear_network.py` | Coupled network vs. exact Jacobian eigenvalues |
-| `plot_05_kuramoto_sync.py` | Kuramoto network synchronization transition |
-| `plot_06_custom_coupling.py` | Writing a custom coupling function |
-| `plot_07_speed_and_accuracy.py` | Cost/accuracy tradeoffs across settings |
-| `plot_08_delayed_coupling.py` | Two-node linear DDE network vs. delay |
-| `plot_09_kuramoto_delayed_network.py` | Effect of transmission delay on a Kuramoto network |
-| `plot_10_matrix_free_scaling.py` | Dense `jacfwd` vs. `jvp`/`vmap`, and why it matters for partial spectra |
-| `plot_11_vmap_parameter_sweep.py` | Batched parameter sweeps via `jax.vmap` |
+| `00_time_series_sanity_check.py` | Inspecting the raw simulated time series before computing exponents |
+| `01_linear_ode.py` | Exact-eigenvalue sanity check for the QR engine |
+| `02_chaotic_maps.py` | 1D/2D maps with closed-form exponents |
+| `03_chaotic_flows.py` | Lorenz/Rössler, the standard chaotic-ODE benchmarks |
+| `04_linear_network.py` | Coupled network vs. exact Jacobian eigenvalues |
+| `05_kuramoto_sync.py` | Kuramoto network synchronization transition |
+| `06_custom_coupling.py` | Writing a custom coupling function |
+| `07_speed_and_accuracy.py` | Cost/accuracy tradeoffs across settings |
+| `08_delayed_coupling.py` | Two-node linear DDE network vs. delay |
+| `09_kuramoto_delayed_network.py` | Effect of transmission delay on a Kuramoto network |
+| `10_matrix_free_scaling.py` | Dense `jacfwd` vs. `jvp`/`vmap`, and why it matters for partial spectra |
+| `11_vmap_parameter_sweep.py` | Batched parameter sweeps via `jax.vmap` |
+| `12_public_api_overview.py` | Problem-object API for ODEs, networks, and DDEs |
+| `13_dde_history_interpolation.py` | Grid-snapped vs. Hermite-interpolated DDE history reads |
+| `14_gpu_acceleration.py` | When GPU execution pays off for larger Lyapunov workloads |
 
 ## Building the docs
 
@@ -116,7 +119,7 @@ pip install -e ".[docs]"
 sphinx-build -b html docs docs/_build/html
 ```
 
-This re-runs every `examples/plot_*.py` file to render it into a
+This re-runs every numbered `examples/*.py` file to render it into a
 sphinx-gallery gallery (code, output, and plots), alongside the API
 reference; open `docs/_build/html/index.html` when it's done.
 
