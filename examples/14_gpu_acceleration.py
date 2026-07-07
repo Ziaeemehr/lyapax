@@ -32,8 +32,17 @@ backend being measured for that run -- the same approach
 ``benchmarks/collect_results.py`` uses so its CPU and GPU benchmark rows
 don't silently collide into one.
 
-If this machine has no working GPU (or JAX can't see one), the GPU curve
-is skipped and only the CPU curve is drawn -- see the printed note.
+The documentation page uses the stored reference figure below, generated
+once on a GPU-capable machine, rather than re-running this benchmark on
+the documentation builder.
+
+.. image:: ../_static/gpu_acceleration_reference.png
+   :alt: Reference CPU/GPU timing sweep for demo 14
+   :align: center
+
+If this machine has no working GPU (or JAX can't see one), local script
+runs do not fabricate GPU timings. The live figure marks the GPU backend
+as unavailable instead.
 """
 # %%
 import json
@@ -45,12 +54,18 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
+# sphinx_gallery_thumbnail_path = "../docs/_static/gpu_acceleration_reference.png"
+
 try:
     THIS_FILE = Path(__file__).resolve()
+    SPHINX_GALLERY_RUN = False
 except NameError:
     # sphinx-gallery exec()s examples without __file__, but chdirs into the
     # example's directory first, so the filename alone still resolves.
     THIS_FILE = (Path.cwd() / "14_gpu_acceleration.py").resolve()
+    SPHINX_GALLERY_RUN = True
+
+REFERENCE_FIGURE = THIS_FILE.parents[1] / "docs" / "_static" / "gpu_acceleration_reference.png"
 
 
 def _run_lyapunov_spectrum(backend: str, n_nodes: int, n_steps: int) -> None:
@@ -101,7 +116,7 @@ def _run_lyapunov_spectrum(backend: str, n_nodes: int, n_steps: int) -> None:
     print(json.dumps({"backend": jax.default_backend(), "elapsed_s": elapsed}))
 
 
-if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--worker":
+if globals().get("__name__") == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--worker":
     _run_lyapunov_spectrum(sys.argv[2], int(sys.argv[3]), int(sys.argv[4]))
     sys.exit(0)
 
@@ -124,40 +139,54 @@ def _time_backend(backend: str, n_nodes: int, n_steps: int) -> dict | None:
 
 
 # %%
-node_sizes = [20, 50, 100, 200, 500, 1000, 2000]
-n_raw_steps = 200
+if SPHINX_GALLERY_RUN:
+    print(f"Using stored reference figure: {REFERENCE_FIGURE}")
+else:
+    node_sizes = [20, 50, 100, 200, 500, 1000, 2000]
+    n_raw_steps = 200
 
-gpu_probe = _time_backend("gpu", n_nodes=10, n_steps=10)
-has_gpu = gpu_probe is not None and gpu_probe["backend"] == "gpu"
-if not has_gpu:
-    print("No working GPU backend found (JAX_PLATFORMS=cuda probe failed) -- "
-          "plotting CPU only. Re-run on a machine with a working CUDA/JAX GPU "
-          "setup to see the CPU/GPU crossover.")
+    gpu_probe = _time_backend("gpu", n_nodes=10, n_steps=10)
+    has_gpu = gpu_probe is not None and gpu_probe["backend"] == "gpu"
+    if not has_gpu:
+        print("No working GPU backend found (JAX_PLATFORMS=cuda probe failed) -- "
+              "GPU timings will be marked unavailable in the plot. Re-run on a "
+              "machine with a working CUDA/JAX GPU setup to see the CPU/GPU "
+              "crossover.")
 
-cpu_times, gpu_times = [], []
-for n_nodes in node_sizes:
-    cpu = _time_backend("cpu", n_nodes, n_raw_steps)
-    cpu_times.append(cpu["elapsed_s"])
-    msg = f"d={n_nodes:5d}  cpu={cpu_times[-1]:7.3f}s"
+    cpu_times, gpu_times = [], []
+    for n_nodes in node_sizes:
+        cpu = _time_backend("cpu", n_nodes, n_raw_steps)
+        cpu_times.append(cpu["elapsed_s"])
+        msg = f"d={n_nodes:5d}  cpu={cpu_times[-1]:7.3f}s"
+        if has_gpu:
+            gpu = _time_backend("gpu", n_nodes, n_raw_steps)
+            gpu_times.append(gpu["elapsed_s"])
+            msg += f"  gpu={gpu_times[-1]:7.3f}s  speedup={cpu_times[-1] / gpu_times[-1]:5.2f}x"
+        print(msg)
+
+    # %%
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.plot(node_sizes, cpu_times, "o-", label="CPU")
     if has_gpu:
-        gpu = _time_backend("gpu", n_nodes, n_raw_steps)
-        gpu_times.append(gpu["elapsed_s"])
-        msg += f"  gpu={gpu_times[-1]:7.3f}s  speedup={cpu_times[-1] / gpu_times[-1]:5.2f}x"
-    print(msg)
-
-# %%
-fig, ax = plt.subplots(figsize=(6, 4))
-ax.plot(node_sizes, cpu_times, "o-", label="CPU")
-if has_gpu:
-    ax.plot(node_sizes, gpu_times, "s-", label="GPU")
-ax.set_xlabel("network size d (n_nodes)")
-ax.set_ylabel(f"wall time for {n_raw_steps} raw steps, k=5 (s)")
-ax.set_xscale("log")
-ax.set_yscale("log")
-ax.set_title("lyapunov_spectrum wall time vs network size: CPU vs GPU")
-ax.legend()
-fig.tight_layout()
-plt.show()
+        ax.plot(node_sizes, gpu_times, "s-", label="GPU")
+    else:
+        ax.plot([], [], "s--", color="C1", label="GPU unavailable on this build")
+        ax.text(
+            0.04, 0.96,
+            "GPU timings not measured\n(no CUDA backend available)",
+            transform=ax.transAxes,
+            ha="left", va="top",
+            fontsize=9,
+            bbox={"boxstyle": "round,pad=0.3", "facecolor": "white", "alpha": 0.85},
+        )
+    ax.set_xlabel("network size d (n_nodes)")
+    ax.set_ylabel(f"wall time for {n_raw_steps} raw steps, k=5 (s)")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_title("lyapunov_spectrum wall time vs network size: CPU vs GPU")
+    ax.legend()
+    fig.tight_layout()
+    plt.show()
 
 # %%
 # The dense d x d coupling matrix means the per-step arithmetic grows like
