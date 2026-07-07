@@ -398,7 +398,9 @@ def lyapunov_spectrum_dde(
     params : closed over for tangent propagation (not differentiated --
         only ``state``/``buf`` are). Ignored when a ``DDEProblem`` is passed.
     dt, n_steps, renorm_every, seed : see ``lyapax.core.lyapunov_spectrum``
-        (same meaning).
+        (same meaning). When a ``DDEProblem`` is passed, ``dt`` may be
+        omitted; if provided, it must match the ``dt`` stored on the
+        problem.
     k : number of leading exponents to track. Defaults to the *full*
         augmented spectrum, ``k = d_total = state0.size + buf0.size`` --
         note this is the ring-buffer-augmented dimension, not just the
@@ -427,6 +429,11 @@ def lyapunov_spectrum_dde(
     """
     if isinstance(step_fn_or_problem, DDEProblem):
         problem = step_fn_or_problem
+        if dt is not None and float(dt) != float(problem.dt):
+            raise ValueError(
+                "dt was passed both directly and via DDEProblem with "
+                f"different values: dt={dt!r}, problem.dt={problem.dt!r}."
+            )
         if n_steps is None:
             if state0 is None:
                 raise TypeError(

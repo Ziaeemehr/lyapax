@@ -189,8 +189,9 @@ def lyapunov_spectrum(
     state0 : (d,) initial state (pre-transient). Ignored (and may be
         omitted) when an ``ODEProblem`` is passed.
     dt : time represented by one call to ``step_fn``. For discrete maps,
-        pass ``dt=1.0`` and interpret the exponents as per-iterate. Ignored
-        when an ``ODEProblem`` is passed.
+        pass ``dt=1.0`` and interpret the exponents as per-iterate. When
+        an ``ODEProblem`` is passed, this may be omitted; if provided, it
+        must match the ``dt`` stored on the problem.
     n_steps : number of steps to run *after* the transient. Must be a
         multiple of ``renorm_every``.
     k : number of leading exponents to track (``k <= d``). Defaults to the
@@ -217,6 +218,11 @@ def lyapunov_spectrum(
     """
     if isinstance(step_fn_or_problem, ODEProblem):
         problem = step_fn_or_problem
+        if dt is not None and float(dt) != float(problem.dt):
+            raise ValueError(
+                "dt was passed both directly and via ODEProblem with "
+                f"different values: dt={dt!r}, problem.dt={problem.dt!r}."
+            )
         if n_steps is None:
             if state0 is None:
                 raise TypeError(

@@ -61,7 +61,10 @@ from lyapax import systems
 # variable -- not just the 3D attractor projection.
 sigma, rho, beta = 10.0, 28.0, 8.0 / 3.0
 dt = 1e-2
-problem = ode_problem(systems.lorenz(sigma, rho, beta), state0=jnp.array([1.0, 1.0, 1.0]), dt=dt)
+problem = ode_problem(
+    systems.lorenz(sigma, rho, beta), 
+    state0=jnp.array([1.0, 1.0, 1.0]), 
+    dt=dt)
 
 n_steps = 5_000
 t, traj = simulate_trajectory(problem.step_fn, problem.state0, n_steps, dt=dt)

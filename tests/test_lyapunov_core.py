@@ -7,9 +7,10 @@ divergence), or published literature figures, per that doc's guidance.
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from lyapax import systems
-from lyapax.core import lyapunov_spectrum
+from lyapax.core import lyapunov_spectrum, ode_problem
 from lyapax.integrators import rk4_step
 from lyapax.utils import simulate_trajectory
 
@@ -35,6 +36,18 @@ def test_linear_system_distinct_real_eigenvalues():
     )
 
     np.testing.assert_allclose(np.array(result.exponents), [-1.0, -2.0, -5.0], atol=2e-3)
+
+
+def test_problem_call_rejects_conflicting_direct_dt():
+    dt = 1e-3
+    problem = ode_problem(
+        systems.linear_system(jnp.array([[-1.0]])),
+        state0=jnp.array([0.3]),
+        dt=dt,
+    )
+
+    with pytest.raises(ValueError, match="different values"):
+        lyapunov_spectrum(problem, n_steps=10, dt=2 * dt)
 
 
 def test_linear_system_complex_conjugate_pair():

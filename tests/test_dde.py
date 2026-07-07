@@ -20,12 +20,14 @@ import time
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 from scipy.special import lambertw
 
 from lyapax import systems
 from lyapax.coupling import kuramoto_coupling
 from lyapax.dde import (
     constant_history_buf0,
+    dde_problem,
     lyapunov_spectrum_dde,
     make_scalar_delayed_step_fn,
     resolve_tau_steps,
@@ -52,6 +54,19 @@ def test_linear_scalar_dde_matches_lambert_w_root():
 
     expected = float((lambertw(-a * tau, k=0) / tau).real)
     assert abs(float(result.exponents[0]) - expected) < 0.01
+
+
+def test_dde_problem_call_rejects_conflicting_direct_dt():
+    dt = 1e-2
+    problem = dde_problem(
+        systems.linear_scalar_dde(a=0.5),
+        state0=jnp.array([1.0]),
+        tau=0.3,
+        dt=dt,
+    )
+
+    with pytest.raises(ValueError, match="different values"):
+        lyapunov_spectrum_dde(problem, n_steps=10, k=1, dt=2 * dt)
 
 
 def test_linear_scalar_dde_dt_convergence():
