@@ -34,6 +34,7 @@ docs = [
     "sphinx-gallery>=0.15",
     "furo>=2024.1",
     "matplotlib>=3.7",
+    "myst-parser>=2.0",
 ]
 # Only for reproducing notes/benchmark_report.md's cross-tool comparison
 # (benchmarks/jitcode/, benchmarks/jitcdde/) -- not needed for lyapax itself

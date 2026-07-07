@@ -16,8 +16,13 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
+    "sphinx.ext.mathjax",
     "sphinx_gallery.gen_gallery",
+    "myst_parser",
 ]
+
+myst_enable_extensions = ["dollarmath", "amsmath"]
+myst_heading_anchors = 3
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
