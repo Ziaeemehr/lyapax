@@ -13,10 +13,10 @@ from .core import LyapunovResult, ODEProblem, lyapunov_spectrum, ode_problem
 from .dde import DDEProblem, dde_problem, lyapunov_spectrum_dde, network_dde_problem
 from .integrators import euler_step, get_integrator, heun_step, ode_step, rk4_step, rk6_step
 from .network import Network, network_problem, network_step, network_step_parametrized
-
-__version__ = "0.0.1"
+from .__version__ import __version__
 
 __all__ = [
+    "__version__",
     "LyapunovResult",
     "lyapunov_spectrum",
     "lyapunov_spectrum_dde",

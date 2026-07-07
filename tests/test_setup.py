@@ -3,10 +3,14 @@
 Not Lyapunov-spectrum correctness tests yet (that starts at M1, against
 notes/validation_systems.md) -- just "does the foundation hold."
 """
+from importlib import metadata
+
 import jax
 import jax.numpy as jnp
 import numpy as np
 
+import lyapax
+from lyapax.__version__ import __version__
 from lyapax.simulator import (
     Connectivity,
     ModelSpec,
@@ -15,6 +19,11 @@ from lyapax.simulator import (
     build_jax_dfun,
     make_step_fn,
 )
+
+
+def test_package_version_is_single_sourced():
+    assert lyapax.__version__ == __version__
+    assert metadata.version("lyapax") == __version__
 
 
 def test_x64_enabled():
