@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "lyapax: JAX-native Lyapunov exponent computation for ODEs and DDEs"
+type: software
+authors:
+  - family-names: Ziaeemehr
+    given-names: Abolfazl
+    orcid: "https://orcid.org/0000-0002-4696-9947"
+    affiliation: "Aix Marseille Univ, INSERM, INS, Institut de Neurosciences des Systèmes, Marseille, France"
+version: 0.1.0
+date-released: "2026-07-03"
+license: MIT
+repository-code: "https://github.com/Ziaeemehr/lyapax"
+url: "https://lyapax.readthedocs.io"
+keywords:
+  - Python
+  - JAX
+  - dynamical systems
+  - Lyapunov exponents
+  - chaos
+  - delay differential equations

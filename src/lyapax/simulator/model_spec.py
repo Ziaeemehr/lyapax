@@ -30,6 +30,13 @@ class ModelSpec:
     'c' (coupling input, scalar per node — zero for uncoupled/single-node
     systems), and the math functions: exp, log, sin, cos, tanh, sqrt, abs, pi.
     No 'np.' / 'jnp.' prefix — the code generator injects the namespace.
+
+    .. warning::
+        ``dfun_str`` is compiled and run via Python's ``exec()``
+        (``build_jax_dfun``) with **no sanitization** — it can execute
+        arbitrary code. Only build a ``ModelSpec`` from strings you (or
+        your own code) wrote; never from untrusted input such as user
+        uploads, network responses, or config files from unknown sources.
     """
     name: str
     state_variables: tuple[StateVar, ...]

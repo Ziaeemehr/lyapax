@@ -217,6 +217,37 @@ def network_problem(
     :param dt: fixed step size.
     :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, ``"rk6"``, or a callable --
         see ``lyapax.simulator.make_step_fn``.
+
+    Examples
+    --------
+    >>> import jax
+    >>> jax.config.update("jax_enable_x64", True)
+    >>> import jax.numpy as jnp
+    >>> from lyapax.core import lyapunov_spectrum
+    >>> from lyapax.coupling import linear_coupling
+    >>> from lyapax.network import Network, network_problem
+    >>> from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
+    >>> weights = jnp.array([[0., 1., 0., 1.],
+    ...                      [1., 0., 1., 0.],
+    ...                      [0., 1., 0., 1.],
+    ...                      [1., 0., 1., 0.]])  # 4-cycle graph
+    >>> model = ModelSpec(
+    ...     name="linear_node",
+    ...     state_variables=(StateVar("x", default_init=0.0),),
+    ...     parameters=(Parameter("gamma", -2.0),),
+    ...     cvar=("x",),
+    ...     dfun_str={"x": "gamma * x + c"},
+    ... )
+    >>> dfun = build_jax_dfun(model)
+    >>> network = Network(weights=weights, cvar_indices=model.cvar_indices)
+    >>> problem = network_problem(
+    ...     dfun, network, linear_coupling(a=1.0, b=0.0),
+    ...     params={"gamma": -2.0, "G": 0.5},
+    ...     state0=jnp.array([0.3, -0.1, 0.2, -0.4]), dt=1e-3,
+    ... )
+    >>> result = lyapunov_spectrum(problem, n_steps=20_000, renorm_every=10)
+    >>> result.exponents  # doctest: +SKIP
+    Array([-1., -2., -2., -3.], dtype=float64)
     """
     step_fn = network_step(dfun, network, coupling, params, dt, integrator=integrator)
     state0 = jnp.asarray(state0).reshape(-1)

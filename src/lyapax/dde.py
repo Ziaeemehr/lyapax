@@ -270,6 +270,24 @@ def dde_problem(
     :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, ``"rk6"``, or a callable --
         see ``lyapax.simulator.make_step_fn``.
     :param interpolate: see ``lyapax.simulator.make_step_fn``.
+
+    Examples
+    --------
+    >>> import jax
+    >>> jax.config.update("jax_enable_x64", True)
+    >>> import jax.numpy as jnp
+    >>> from lyapax import systems
+    >>> from lyapax.dde import dde_problem, lyapunov_spectrum_dde
+    >>> a, tau, dt = 0.5, 0.3, 1e-2
+    >>> problem = dde_problem(
+    ...     systems.linear_scalar_dde(a=a), state0=jnp.array([1.0]),
+    ...     tau=tau, dt=dt,
+    ... )
+    >>> result = lyapunov_spectrum_dde(
+    ...     problem, n_steps=20_000, k=1, renorm_every=5, t_transient=10.0,
+    ... )
+    >>> result.exponents  # doctest: +SKIP
+    Array([-0.5985], dtype=float64)  # dominant root of the Lambert-W characteristic equation
     """
     state0 = jnp.asarray(state0)
     m = state0.shape[0]
@@ -326,6 +344,41 @@ def network_dde_problem(
     :param interpolate: see ``lyapax.simulator.make_step_fn``. When True,
         ``tau`` (or ``network.delay_steps``) need not be an integer
         number of ``dt`` steps.
+
+    Examples
+    --------
+    Two linearly delay-coupled nodes, ``x_i' = gamma*x_i +
+    G*x_j(t-tau)``, whose symmetric/antisymmetric modes have closed-form
+    Lambert-W exponents:
+
+    >>> import jax
+    >>> jax.config.update("jax_enable_x64", True)
+    >>> import jax.numpy as jnp
+    >>> import lyapax
+    >>> from lyapax.coupling import linear_coupling
+    >>> from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
+    >>> gamma, G, tau, dt = -1.0, 0.3, 0.2, 1e-3
+    >>> model = ModelSpec(
+    ...     name="linear_node",
+    ...     state_variables=(StateVar("x", default_init=0.0),),
+    ...     parameters=(Parameter("gamma", gamma),),
+    ...     cvar=("x",),
+    ...     dfun_str={"x": "gamma * x + c"},
+    ... )
+    >>> dfun = build_jax_dfun(model)
+    >>> network = lyapax.Network(
+    ...     weights=jnp.array([[0., 1.], [1., 0.]]), cvar_indices=model.cvar_indices,
+    ... )
+    >>> problem = lyapax.network_dde_problem(
+    ...     dfun, network, linear_coupling(a=1.0, b=0.0),
+    ...     params={"gamma": gamma, "G": G}, state0=jnp.array([[0.3, -0.2]]),
+    ...     dt=dt, tau=tau,
+    ... )
+    >>> result = lyapax.lyapunov_spectrum_dde(
+    ...     problem, n_steps=20_000, k=2, renorm_every=10, t_transient=5.0,
+    ... )
+    >>> result.exponents  # doctest: +SKIP
+    Array([-0.6578, -1.3967], dtype=float64)  # symmetric, antisymmetric mode
     """
     if tau is not None:
         if network.delay_steps is not None:
@@ -426,6 +479,13 @@ def lyapunov_spectrum_dde(
     Returns
     -------
     LyapunovResult
+
+    Examples
+    --------
+    See ``dde_problem`` for a full worked example
+    (``lyapunov_spectrum_dde(dde_problem(...), n_steps=...)``); this
+    function is the DDE analogue of ``lyapax.core.lyapunov_spectrum``,
+    generalized to the ring-buffer-augmented ``(state, buf)`` tangent pair.
     """
     if isinstance(step_fn_or_problem, DDEProblem):
         problem = step_fn_or_problem

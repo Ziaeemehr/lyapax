@@ -12,6 +12,23 @@ authors = [
     { name = "Abolfazl Ziaeemehr", email = "a.ziaeemehr@gmail.com" },
 ]
 readme = "README.md"
+keywords = [
+    "jax",
+    "dynamical systems",
+    "lyapunov exponents",
+    "chaos",
+    "delay differential equations",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Physics",
+]
 
 # Verified against jax==0.10.2 in the local dev environment (lyapax venv).
 # CI/dev defaults to CPU (see tests/conftest.py); GPU is opt-in and
@@ -45,6 +62,16 @@ benchmark = [
     "jitcdde>=1.8",
     "sympy>=1.13",  # jitcode/jitcdde's f_lyap simplify step needs it even on the compiled-C path
 ]
+
+[project.urls]
+Homepage = "https://github.com/Ziaeemehr/lyapax"
+Documentation = "https://lyapax.readthedocs.io"
+Repository = "https://github.com/Ziaeemehr/lyapax"
+Issues = "https://github.com/Ziaeemehr/lyapax/issues"
+Changelog = "https://github.com/Ziaeemehr/lyapax/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+license-files = ["LICENSE"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

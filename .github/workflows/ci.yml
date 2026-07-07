@@ -45,3 +45,38 @@ jobs:
 
       - name: Run ruff
         run: ruff check src tests
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tooling
+        run: pip install build twine
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Check package metadata
+        run: twine check dist/*
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install lyapax (docs extras)
+        run: pip install -e ".[docs]"
+
+      - name: Build Sphinx docs
+        run: sphinx-build -b html -W docs docs/_build/html

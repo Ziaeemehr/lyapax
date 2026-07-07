@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Usage question
+    url: https://github.com/Ziaeemehr/lyapax/discussions
+    about: Ask about usage, results, or how to model a system with lyapax.

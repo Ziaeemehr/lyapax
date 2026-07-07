@@ -215,6 +215,20 @@ def lyapunov_spectrum(
     Returns
     -------
     LyapunovResult
+
+    Examples
+    --------
+    >>> import jax
+    >>> jax.config.update("jax_enable_x64", True)
+    >>> import jax.numpy as jnp
+    >>> from lyapax import lyapunov_spectrum, ode_problem, systems
+    >>> rhs = systems.lorenz(sigma=10.0, rho=28.0, beta=8.0 / 3.0)
+    >>> problem = ode_problem(rhs, state0=jnp.array([1.0, 1.0, 1.0]), dt=1e-2)
+    >>> result = lyapunov_spectrum(
+    ...     problem, n_steps=50_000, renorm_every=10, t_transient=100.0,
+    ... )
+    >>> result.exponents  # doctest: +SKIP
+    Array([ 0.906,  0.   , -14.57], dtype=float64)
     """
     if isinstance(step_fn_or_problem, ODEProblem):
         problem = step_fn_or_problem

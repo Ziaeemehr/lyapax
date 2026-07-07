@@ -40,7 +40,7 @@ delay-coupled systems — with no hand-derived linearization, while
 inheriting JAX's just-in-time compilation and transparent CPU/GPU
 execution.
 
-# Statement of Need
+# Statement of need
 
 Computing a Lyapunov spectrum reliably requires more than the textbook
 formula: one must integrate the state and a set of orthonormalized tangent
@@ -48,13 +48,7 @@ vectors together, re-orthonormalize periodically (QR), and average the
 logarithmic growth of each direction over a long horizon in a numerically
 stable way. Implementing this correctly for a new model — especially a
 high-dimensional network or a delay system — is error-prone, and existing
-tools each cover only part of the space. `jitcode` and `jitcdde`
-[@ansmann2018efficiently] compile a symbolic right-hand side to C and are
-the established Python references for ODE and DDE Lyapunov spectra
-respectively, but they require the model to be expressed symbolically and
-have no GPU backend. `ChaosTools.jl`, part of `DynamicalSystems.jl`
-[@datseris2018dynamicalsystems], is a mature Julia toolbox but lives
-outside the Python/NumPy ecosystem.
+tools each cover only part of the space.
 
 `lyapax` fills a specific gap: a Lyapunov-spectrum engine that (i) works on
 any differentiable JAX map, so the model is ordinary Python/`jax.numpy`
@@ -69,7 +63,31 @@ DDE models — particularly coupled oscillator networks and delay-coupled
 systems — without implementing or hand-linearizing the tangent-propagation
 machinery themselves.
 
-# Method and Implementation
+# State of the field
+
+`jitcode` and `jitcdde` [@ansmann2018efficiently] compile a symbolic
+right-hand side to C and are the established Python references for ODE and
+DDE Lyapunov spectra respectively; they are fast and mature, but the model
+must be expressed as a symbolic expression rather than arbitrary code, and
+neither has a GPU backend. `ChaosTools.jl`, part of `DynamicalSystems.jl`
+[@datseris2018dynamicalsystems], is a mature, broad-scope Julia toolbox for
+nonlinear dynamics, including Lyapunov spectra, but it lives outside the
+Python/NumPy ecosystem and is not designed around autodiff or GPU
+execution. Ad hoc SciPy-based approaches (custom scripts using finite
+differences, hand-derived Jacobians, or manually coded variational
+equations) are common in practice but are one-off, unvalidated, and not
+reusable across projects. `Diffrax` [@kidger2021neural] provides
+differentiable ODE/SDE/CDE solvers natively in JAX, including adaptive-step
+and stiff methods, but it is a general differential-equation solver
+library, not a Lyapunov-spectrum package; it does not itself provide
+tangent-space QR renormalization, partial-spectrum tracking, or DDE
+ring-buffer handling. `lyapax` is, to the author's knowledge, the first
+JAX-native package purpose-built for Lyapunov spectra that accepts
+ordinary user-written JAX functions (rather than symbolic expressions) and
+targets the autodiff/JIT/GPU workflow directly, while remaining a narrowly
+scoped complement to — not a replacement for — these tools.
+
+# Software design
 
 For an autonomous system $\dot{x} = f(x)$, `lyapax` advances the state with
 a fixed-step integrator (Euler, Heun, RK4, or RK6) and simultaneously
@@ -101,6 +119,32 @@ over many steps, single-precision arithmetic silently degrades
 long-horizon estimates; `lyapax` therefore expects JAX's `float64` mode to
 be enabled and warns when it is not.
 
+Several design tradeoffs shape the current scope. **Fixed-step integrators
+versus adaptive/stiff solvers:** `lyapax` uses fixed-step Euler/Heun/RK4/RK6
+rather than an adaptive or implicit solver like those in `Diffrax`
+[@kidger2021neural]; this keeps the tangent-propagation step map simple and
+directly differentiable, at the cost of requiring the user to check
+`dt`-convergence themselves and making stiff systems a poor fit. **Matrix-free
+`jax.jvp`/`jax.vmap` versus a dense Jacobian:** propagating only the
+requested $k$ tangent columns avoids ever materializing a $d \times d$
+Jacobian, which is what makes partial spectra of high-dimensional systems
+cheap, but it means the cost still scales linearly in $k$ and is not free
+for full-spectrum ($k = d$) requests on very large systems. **Partial
+spectra as a first-class option:** exposing `k` directly in the public API,
+rather than always computing the full spectrum and truncating, is what
+makes the matrix-free design pay off in practice. **DDE ring-buffer
+dimension:** representing delay history as a fixed-size ring buffer appended
+to the state keeps the DDE solver structurally identical to the ODE one
+(same `jax.jvp`/`jax.vmap` machinery, same QR renormalization), but the
+augmented state's dimension — and hence memory and compute cost — grows
+with the delay-to-`dt` ratio, which is why very small `dt` relative to a long
+delay `tau` can become expensive. **Plain callables over a coupling
+registry:** networks and DDEs take an arbitrary user-supplied coupling
+function rather than requiring registration in a fixed set of built-in
+coupling types; a handful of common couplings (linear, sigmoidal, Kuramoto)
+are provided as convenience defaults, but the API does not otherwise
+constrain what a coupling function can compute.
+
 # Validation
 
 `lyapax` is validated against exact and published references and
@@ -126,6 +170,34 @@ vectorized `jax.vmap` parameter sweep is about 3× faster than the
 equivalent Python loop. The full accuracy and performance comparison,
 including the exact settings and environment, is reproducible via the
 scripts under `benchmarks/`.
+
+# Research impact statement
+
+*Placeholder — to be filled in before submission.* `lyapax` is newly
+released with no external users, citations, or downstream projects yet.
+The evidence of applicability currently available is internal: the
+validation suite against exact/literature values and independent tools
+described above, the runnable example gallery, and the benchmark reports
+under `benchmarks/`. This section will be updated with concrete usage
+evidence (adopting projects, presentations, or publications) as it
+accumulates and before the package is submitted.
+
+# AI usage disclosure
+
+*Placeholder — to be filled in before submission.* This section will
+describe how AI tools were used in developing `lyapax` (code, tests,
+documentation, and/or this paper) and how correctness of any AI-assisted
+contributions was checked, once the project is closer to submission.
+
+# Limitations and future work
+
+The current scope excludes adaptive/stiff ODE integration, state-dependent
+or distributed delays, and stochastic/noise-driven Lyapunov exponents;
+DDE problems with large delay-to-`dt` ratios are also limited by the
+ring-buffer state's memory and compute cost. Planned directions include an
+optional `Diffrax`-based [@kidger2021neural] adaptive-step integrator for
+non-stiff-but-inconvenient systems, and continued work on DDE scalability
+for long-delay problems.
 
 # Acknowledgements
 

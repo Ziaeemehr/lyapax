@@ -12,6 +12,7 @@ Benettin/QR method with ``jax.jvp``/``jax.vmap`` tangent propagation.
    background/lyapax_implementation
    background/validation
    background/capabilities
+   background/jax_performance
 
 .. toctree::
    :maxdepth: 1

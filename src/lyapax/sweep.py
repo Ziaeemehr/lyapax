@@ -71,6 +71,42 @@ def sweep_lyapunov_spectrum(
     -------
     LyapunovResult, every field with an extra leading batch axis of size
     ``n_sweep`` -- e.g. ``result.exponents.shape == (n_sweep, k)``.
+
+    Examples
+    --------
+    Sweep the coupling strength ``G`` of a Kuramoto network in one
+    ``jax.vmap`` call instead of a Python loop over ``lyapunov_spectrum``:
+
+    >>> import jax
+    >>> jax.config.update("jax_enable_x64", True)
+    >>> import jax.numpy as jnp
+    >>> from lyapax.coupling import kuramoto_coupling
+    >>> from lyapax.network import Network, network_step_parametrized
+    >>> from lyapax.simulator import ModelSpec, StateVar, Parameter, build_jax_dfun
+    >>> from lyapax.sweep import sweep_lyapunov_spectrum
+    >>> n_nodes = 6
+    >>> omega = jnp.linspace(-1.0, 1.0, n_nodes)
+    >>> weights = jnp.ones((n_nodes, n_nodes)) - jnp.eye(n_nodes)
+    >>> model = ModelSpec(
+    ...     name="kuramoto",
+    ...     state_variables=(StateVar("theta", default_init=0.0),),
+    ...     parameters=(Parameter("omega", 0.0),),
+    ...     cvar=("theta",),
+    ...     dfun_str={"theta": "omega + c"},
+    ... )
+    >>> dfun = build_jax_dfun(model)
+    >>> network = Network(weights=weights, cvar_indices=model.cvar_indices)
+    >>> dt = 1e-2
+    >>> state0 = jnp.linspace(0.0, 2 * jnp.pi, n_nodes, endpoint=False)
+    >>> G_values = jnp.linspace(0.0, 4.0, 13)
+    >>> step_p = network_step_parametrized(dfun, network, kuramoto_coupling(alpha=0.0), dt)
+    >>> params_batch = {"omega": jnp.broadcast_to(omega, (13, n_nodes)), "G": G_values}
+    >>> result = sweep_lyapunov_spectrum(
+    ...     step_p, state0, params_batch, dt=dt, n_steps=5_000,
+    ...     renorm_every=10, k=2, t_transient=50.0,
+    ... )
+    >>> result.exponents.shape  # doctest: +SKIP
+    (13, 2)
     """
     def _run_one(params, state0_i):
         return lyapunov_spectrum(
