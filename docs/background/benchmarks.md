@@ -89,18 +89,11 @@ since it has no delay-equation support).
 
 ## Performance
 
-Warm-call wall-clock time only (steady-state, post-compile) — first-call
-timings aren't shown here. `lyapax`/`jitcode`/`jitcdde`/`ChaosTools.jl`
-all pay a one-time JIT/compile cost on their first call, but since each
-benchmark script runs every integrator variant back-to-back in one
-process, whichever tool happens to run *first* in a script absorbs a
-large, shared one-time cost (JAX backend init, Julia package
-precompilation, etc.) that has nothing to do with that specific tool or
-system — making first-call numbers a comparison of subprocess ordering,
-not of compile cost. The GPU columns re-run the same `lyapax` scripts
-with a CUDA backend rather than CPU — see `benchmarks/collect_results.py`
-for how that pass is skipped (with a warning, not a failure) when no
-working GPU is found.
+Steady-state per-call wall-clock time (each tool's JIT/compile step has
+already run by the time these numbers are measured). The GPU columns
+re-run the same `lyapax` scripts with a CUDA backend rather than CPU —
+see `benchmarks/collect_results.py` for how that pass is skipped (with a
+warning, not a failure) when no working GPU is found.
 
 The default `ChaosTools.jl` column uses its own idiomatic choice
 (`Tsit5`, adaptive step control) — a different algorithm from `lyapax`'s
@@ -128,12 +121,12 @@ algorithm mismatch.
 
 The plot below is generated from the same `benchmarks/results.json`
 snapshot as the tables above; regenerate it with
-`python benchmarks/report_plots.py`. It's every tool's warm wall-clock
-time per system, log-scaled since the range spans several orders of
-magnitude -- `jitcode`/`jitcdde` are the tools closest to `lyapax`'s own
-execution model (a one-time trace/compile, then a tight numerical loop
-for every call after); `ChaosTools.jl` has near-zero per-call overhead
-on these small toy systems and is the fastest tool for most of them
-regardless.
+`python benchmarks/report_plots.py`. It's every tool's steady-state
+wall-clock time per system, log-scaled since the range spans several
+orders of magnitude -- `jitcode`/`jitcdde` are the tools closest to
+`lyapax`'s own execution model (a one-time trace/compile, then a tight
+numerical loop for every call after); `ChaosTools.jl` has near-zero
+per-call overhead on these small toy systems and is the fastest tool
+for most of them regardless.
 
 ![Warm wall-clock time per system, all tools](/_static/benchmarks_performance.png)

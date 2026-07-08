@@ -39,12 +39,26 @@ machinery themselves.
   right-hand side to C and are the established Python references for ODE
   and DDE Lyapunov spectra respectively. They are fast and mature, but the
   model must be expressed as a symbolic expression rather than arbitrary
-  code, and neither has a GPU backend.
+  code, and neither has a GPU backend. Their integrator choice is also
+  fixed to SciPy's adaptive solvers (`dopri5`, `RK45`, `dop853`, `RK23`,
+  `BDF`, `LSODA`, `Radau`, `vode`) — there is no fixed-step classical
+  RK4/Heun option, so a step-for-step same-algorithm comparison against
+  `lyapax`'s own fixed-step integrators isn't possible without patching
+  the library (see {doc}`benchmarks`'s performance section).
 - **[ChaosTools.jl](https://juliadynamics.github.io/DynamicalSystemsDocs.jl/chaostools/stable/)**,
   part of `DynamicalSystems.jl`, is a mature, broad-scope Julia toolbox for
   nonlinear dynamics, including Lyapunov spectra, but it lives outside the
   Python/NumPy ecosystem and is not designed around autodiff or GPU
-  execution.
+  execution. Its `OrdinaryDiffEq.jl` backend does expose fixed-step
+  classical methods (`RK4()`, `Vern6()`), which does let a genuine
+  same-algorithm CPU comparison be constructed (see {doc}`benchmarks`) —
+  but `lyapunovspectrum` itself has no GPU path at all: Julia's GPU story
+  for ODEs (`DiffEqGPU.jl`) is built around parallelizing an *ensemble* of
+  independent trajectories on the device, not accelerating one small
+  system's tangent propagation, which doesn't match how a single
+  Lyapunov-spectrum run is structured. Getting a ChaosTools.jl-based
+  computation onto a GPU at all would mean bypassing its own API and
+  hand-writing the Benettin/QR loop directly against CUDA kernels.
 - **Ad hoc SciPy-based approaches** (custom scripts using finite
   differences, hand-derived Jacobians, or manually coded variational
   equations) are common in practice but are one-off, unvalidated, and not

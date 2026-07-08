@@ -6,8 +6,8 @@ contract.
 Usage:
     python benchmarks/report_plots.py
 
-Writes docs/_static/benchmarks_performance.png (every tool's warm
-wall-clock time per system).
+Writes docs/_static/benchmarks_performance.png (every tool's
+steady-state wall-clock time per system).
 """
 from pathlib import Path
 
@@ -79,7 +79,7 @@ def _style_axes(ax):
 
 
 def plot_performance(by_system: dict, out_path: Path) -> None:
-    """Warm wall-clock time per system, all CPU tools, log-scaled x-axis.
+    """Steady-state wall-clock time per system, all CPU tools, log-scaled x-axis.
 
     GPU rows are intentionally excluded here (they're in the table above):
     these toy-sized systems don't amortize GPU dispatch overhead, so a GPU
@@ -97,7 +97,7 @@ def plot_performance(by_system: dict, out_path: Path) -> None:
         facecolor=SURFACE,
         gridspec_kw={"height_ratios": counts},
     )
-    fig.suptitle("Warm wall-clock time per system (lower is faster)",
+    fig.suptitle("Wall-clock time per system (lower is faster)",
                   color=INK_PRIMARY, fontsize=11, y=0.995)
 
     for ax, sys_key in zip(axes, systems):
@@ -122,7 +122,7 @@ def plot_performance(by_system: dict, out_path: Path) -> None:
         if ax is not axes[-1]:
             ax.set_xticklabels([])
 
-    axes[-1].set_xlabel("warm wall-clock time, seconds (log scale)",
+    axes[-1].set_xlabel("wall-clock time, seconds (log scale)",
                          fontsize=9, color=INK_SECONDARY)
     fig.tight_layout(rect=(0, 0, 1, 0.98))
     fig.savefig(out_path, dpi=180, facecolor=SURFACE)
