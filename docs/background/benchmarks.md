@@ -59,11 +59,11 @@ since it has no delay-equation support).
 <!-- AUTO:ode-accuracy -->
 | System | lyapax | lyapax (RK6) | jitcode | ChaosTools.jl | ChaosTools.jl (RK4) | ChaosTools.jl (Vern6) | Reference | Notes |
 |---|---|---|---|---|---|---|---|---|
-| Linear ODE (Tier 0.1) | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | exact `[-1, -2, -5]` | max abs diff from reference -- lyapax: `9.45e-07`, lyapax (RK6): `9.45e-07`, jitcode: `3.23e-06`, ChaosTools.jl: `8.76e-11`, ChaosTools.jl (RK4): `2.80e-11`, ChaosTools.jl (Vern6): `2.03e-12` |
-| Lorenz λ1 (Tier 1.1/2) | `0.90172` | `0.90878` | `0.90782` | `0.89674` | `0.90632` | `0.91334` | published `≈0.9056` | max abs diff from reference -- lyapax: `3.88e-03`, lyapax (RK6): `3.18e-03`, jitcode: `2.22e-03`, ChaosTools.jl: `8.86e-03`, ChaosTools.jl (RK4): `7.17e-04`, ChaosTools.jl (Vern6): `7.74e-03` |
-| Lorenz sum(λ) | `-13.6666` | `-13.6667` | `-13.6667` | `-13.5228` | `-13.6666` | `-13.6667` | exact `-13.6667` (`-(σ+1+β)`) | max abs diff from reference -- lyapax: `1.02e-04`, lyapax (RK6): `1.79e-09`, jitcode: `1.55e-06`, ChaosTools.jl: `1.44e-01`, ChaosTools.jl (RK4): `1.03e-04`, ChaosTools.jl (Vern6): `1.82e-09` |
-| Rössler λ1 (Tier 1.2/2) | `0.07080` | `0.08017` | `0.07244` | `0.06205` | `0.07545` | `0.07264` | qualitative `≈0.07` | max abs diff from reference -- lyapax: `7.98e-04`, lyapax (RK6): `1.02e-02`, jitcode: `2.44e-03`, ChaosTools.jl: `7.95e-03`, ChaosTools.jl (RK4): `5.45e-03`, ChaosTools.jl (Vern6): `2.64e-03` |
-| 4-node linear network (Tier 3.1) | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | exact `[-1, -2, -2, -3]` | max abs diff from reference -- lyapax: `3.53e-06`, lyapax (RK6): `3.53e-06`, jitcode: `3.83e-06`, ChaosTools.jl: `2.23e-06`, ChaosTools.jl (RK4): `2.18e-06`, ChaosTools.jl (Vern6): `2.18e-06` |
+| Linear ODE (Tier 0.1) | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | exact `[-1, -2, -5]` | max abs diff from reference -- lyapax: `9.45e-07`, lyapax (RK6): `9.45e-07`, jitcode: `3.91e-05`, ChaosTools.jl: `8.76e-11`, ChaosTools.jl (RK4): `2.80e-11`, ChaosTools.jl (Vern6): `2.03e-12` |
+| Lorenz λ1 (Tier 1.1/2) | `0.90172` | `0.90878` | `0.91444` | `0.89674` | `0.90632` | `0.91334` | published `≈0.9056` | max abs diff from reference -- lyapax: `3.88e-03`, lyapax (RK6): `3.18e-03`, jitcode: `8.84e-03`, ChaosTools.jl: `8.86e-03`, ChaosTools.jl (RK4): `7.17e-04`, ChaosTools.jl (Vern6): `7.74e-03` |
+| Lorenz sum(λ) | `-13.6666` | `-13.6667` | `-13.6667` | `-13.5228` | `-13.6666` | `-13.6667` | exact `-13.6667` (`-(σ+1+β)`) | max abs diff from reference -- lyapax: `1.02e-04`, lyapax (RK6): `1.79e-09`, jitcode: `1.53e-06`, ChaosTools.jl: `1.44e-01`, ChaosTools.jl (RK4): `1.03e-04`, ChaosTools.jl (Vern6): `1.82e-09` |
+| Rössler λ1 (Tier 1.2/2) | `0.07080` | `0.08017` | `0.07011` | `0.06205` | `0.07545` | `0.07264` | qualitative `≈0.07` | max abs diff from reference -- lyapax: `7.98e-04`, lyapax (RK6): `1.02e-02`, jitcode: `1.08e-04`, ChaosTools.jl: `7.95e-03`, ChaosTools.jl (RK4): `5.45e-03`, ChaosTools.jl (Vern6): `2.64e-03` |
+| 4-node linear network (Tier 3.1) | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | exact `[-1, -2, -2, -3]` | max abs diff from reference -- lyapax: `3.53e-06`, lyapax (RK6): `3.53e-06`, jitcode: `1.09e-05`, ChaosTools.jl: `2.23e-06`, ChaosTools.jl (RK4): `2.18e-06`, ChaosTools.jl (Vern6): `2.18e-06` |
 <!-- END AUTO:ode-accuracy -->
 
 ### Map systems
@@ -81,9 +81,9 @@ since it has no delay-equation support).
 <!-- AUTO:dde-accuracy -->
 | System | lyapax | lyapax (RK6) | jitcdde | Reference | Notes |
 |---|---|---|---|---|---|
-| Linear scalar DDE (Tier 4.2) | `-0.60050` | `-0.60050` | `-0.59831` | Lambert W root `-0.598304` | max abs diff from reference -- lyapax: `2.19e-03`, lyapax (RK6): `2.19e-03`, jitcdde: `8.01e-07` |
-| Mackey-Glass λ1 (Tier 4.1) | `0.00796` | `0.00727` | `0.00531` | qualitative `1e-03`-`1e-02` | lyapax inside band; lyapax (RK6) inside band; jitcdde inside band |
-| Mackey-Glass KY dimension | `2.206` | `2.191` | `2.137` | `2.0`-`3.0` | lyapax inside band; lyapax (RK6) inside band; jitcdde inside band |
+| Linear scalar DDE (Tier 4.2) | `-0.60050` | `-0.60050` | `-0.59830` | Lambert W root `-0.598304` | max abs diff from reference -- lyapax: `2.19e-03`, lyapax (RK6): `2.19e-03`, jitcdde: `7.26e-07` |
+| Mackey-Glass λ1 (Tier 4.1) | `0.00796` | `0.00727` | `0.00517` | qualitative `1e-03`-`1e-02` | lyapax inside band; lyapax (RK6) inside band; jitcdde inside band |
+| Mackey-Glass KY dimension | `2.206` | `2.191` | `2.133` | `2.0`-`3.0` | lyapax inside band; lyapax (RK6) inside band; jitcdde inside band |
 | 2-node delayed linear network (Tier 4.3) | not yet run | not yet run | not yet run | Lambert W root (2x2) | deferred -- not yet run against jitcdde |
 <!-- END AUTO:dde-accuracy -->
 
@@ -111,12 +111,12 @@ algorithm mismatch.
 <!-- AUTO:performance -->
 | System | lyapax | lyapax (RK6) | lyapax (GPU) | lyapax (RK6, GPU) | jitcode | jitcdde | ChaosTools.jl | ChaosTools.jl (RK4) | ChaosTools.jl (Vern6) |
 |---|---|---|---|---|---|---|---|---|---|
-| Linear ODE (Tier 0.1) | `0.264s` | `0.449s` | `0.942s` | `1.518s` | `0.193s` | -- | `0.006s` | `0.007s` | `0.010s` |
-| Lorenz | `0.393s` | `0.659s` | `1.790s` | `3.470s` | `0.640s` | -- | `0.010s` | `0.021s` | `0.037s` |
-| Rössler | `0.461s` | `0.750s` | `4.782s` | `9.454s` | `2.159s` | -- | `0.031s` | `0.076s` | `0.123s` |
-| 4-node network (Tier 3.1) | `0.429s` | `0.761s` | `1.189s` | `2.304s` | `0.203s` | -- | `0.004s` | `0.012s` | `0.018s` |
-| Linear scalar DDE (Tier 4.2) | `0.330s` | `0.462s` | `0.692s` | `0.911s` | -- | `0.021s` | -- | -- | -- |
-| Mackey-Glass | `0.652s` | `0.895s` | `1.450s` | `2.100s` | -- | `10.564s` | -- | -- | -- |
+| Linear ODE (Tier 0.1) | `0.270s` | `0.396s` | `0.961s` | `1.488s` | `0.194s` | -- | `0.003s` | `0.007s` | `0.010s` |
+| Lorenz | `0.406s` | `0.676s` | `1.834s` | `3.448s` | `0.660s` | -- | `0.010s` | `0.022s` | `0.040s` |
+| Rössler | `0.420s` | `0.735s` | `4.727s` | `9.369s` | `2.076s` | -- | `0.032s` | `0.074s` | `0.116s` |
+| 4-node network (Tier 3.1) | `0.434s` | `0.749s` | `1.208s` | `2.268s` | `0.195s` | -- | `0.004s` | `0.012s` | `0.046s` |
+| Linear scalar DDE (Tier 4.2) | `0.327s` | `0.422s` | `0.700s` | `0.848s` | -- | `0.017s` | -- | -- | -- |
+| Mackey-Glass | `0.615s` | `0.915s` | `1.399s` | `1.984s` | -- | `10.502s` | -- | -- | -- |
 <!-- END AUTO:performance -->
 
 The plot below is generated from the same `benchmarks/results.json`
@@ -130,3 +130,69 @@ per-call overhead on these small toy systems and is the fastest tool
 for most of them regardless.
 
 ![Warm wall-clock time per system, all tools](/_static/benchmarks_performance.png)
+
+## Network-size scaling
+
+Every system above is small (3–4 state dimensions) — deliberately, so
+each has an exact or published reference to validate against. But it
+also means none of them exercise the part of `lyapax`'s design meant for
+*bigger* problems. This section uses one further system, a dense
+(all-to-all) Kuramoto network, at increasing size `d`, tracking a fixed
+`k=5` partial spectrum — the same system as
+[10_matrix_free_scaling.py](../../examples/10_matrix_free_scaling.py) /
+[14_gpu_acceleration.py](../../examples/14_gpu_acceleration.py), run
+here across tools instead of just `lyapax` CPU vs. GPU. It's a
+performance-only comparison — a short, no-transient run, not validated
+against a reference spectrum the way the tables above are — so read the
+timings, not the exponent values.
+
+**`lyapax`'s cost here is dominated by `k`, not `d`.** `jax.jvp` computes
+only the `k=5` tangent directions actually requested, regardless of how
+large the network is (see `lyapax.core.lyapunov_spectrum`'s docstring).
+That's why `ChaosTools.jl` and `jitcode` — both of which stop well short
+of `lyapax`'s full `d=50/200/1000/2000` sweep — aren't a same-algorithm
+comparison being run partway; they're at (or past) their own scaling
+limit:
+
+- **`ChaosTools.jl`** stops at `d=200` (using the fixed-step `RK4()`
+  established above as the fair algorithm to compare). Its tangent
+  propagation forms the **full dense `d x d` Jacobian via `ForwardDiff`
+  every step**, regardless of `k` — the opposite of `lyapax`'s
+  matrix-free approach. The table below shows this cost growing far
+  worse than quadratically between `d=50` and `d=200`; a direct test at
+  `d=1000` was abandoned after running well past ten minutes without
+  finishing a single call. This is a genuine per-call cost, not a
+  one-time compile tax — a direct comparison of that same `d=200` run's
+  first and warm calls came out within a few percent of each other,
+  unlike a case dominated by JIT/compile overhead.
+- **`jitcode`** stops at `d=50` for a different reason: it differentiates
+  the right-hand side **symbolically before compiling to C**, and that
+  compile step alone took on the order of a minute for a dense `d=50`
+  network (~2,450 nonzero coupling terms) in a direct test, before a
+  single integration step ran — a cost the table below doesn't show,
+  since it (like the rest of this page) reports steady-state, post-compile
+  time only. Unlike `ChaosTools.jl`'s bottleneck, this one *is*
+  front-loaded — once compiled, `jitcode`'s own steady-state call is
+  fast — but the compile cost itself scales with network density and
+  would only be worse at `d=200`+.
+
+`lyapax` pays neither cost at any of these sizes: no symbolic
+differentiation step to compile, and no dense Jacobian to form at
+run time.
+
+<!-- AUTO:scaling -->
+| Network size (d) | lyapax | lyapax (GPU) | ChaosTools.jl (RK4) | jitcode |
+|---|---|---|---|---|
+| `50` | `0.372s` | `0.330s` | `1.878s` | `0.585s` |
+| `200` | `1.075s` | `0.265s` | `174.227s` | not attempted |
+| `1000` | `7.659s` | `0.624s` | not attempted | not attempted |
+| `2000` | `35.773s` | `1.419s` | not attempted | not attempted |
+<!-- END AUTO:scaling -->
+
+The `d=1000`/`d=2000` rows are also where `lyapax`'s GPU backend earns
+its keep — unlike the small 3–4-dimensional systems above, where GPU
+lost outright to CPU (see the performance table's GPU columns), a dense
+`d=2000` network's per-step arithmetic is large enough to amortize GPU
+dispatch overhead.
+
+![Wall-clock time vs. network size, dense Kuramoto network](/_static/benchmarks_scaling.png)

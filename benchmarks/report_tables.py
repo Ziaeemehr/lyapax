@@ -266,11 +266,29 @@ def build_performance_table(by_system: dict) -> str:
     return _md_table(headers, rows)
 
 
+def build_scaling_table(by_system: dict) -> str:
+    order = ["lyapax", "lyapax-gpu", "chaostools-rk4", "jitcode"]
+    sizes = [50, 200, 1000, 2000]
+    systems = [f"kuramoto_scaling_d{d}" for d in sizes]
+    tools = _present(by_system, systems, order)
+    headers = ["Network size (d)"] + [TOOL_LABEL[t] for t in tools]
+    rows = []
+    for d, sys_key in zip(sizes, systems):
+        sys_rows = by_system.get(sys_key, {})
+        if not sys_rows:
+            continue
+        warm = [f"`{sys_rows[t]['warm_s']:.3f}s`" if t in sys_rows else "not attempted"
+                for t in tools]
+        rows.append([f"`{d}`", *warm])
+    return _md_table(headers, rows)
+
+
 MARKERS = {
     "ode-accuracy": build_ode_table,
     "maps-accuracy": build_maps_table,
     "dde-accuracy": build_dde_table,
     "performance": build_performance_table,
+    "scaling": build_scaling_table,
 }
 
 
@@ -304,6 +322,8 @@ def main() -> None:
     print(build_dde_table(by_system))
     print("\n### Performance\n")
     print(build_performance_table(by_system))
+    print("\n### Network-size scaling\n")
+    print(build_scaling_table(by_system))
 
     if args.write:
         for report_path in REPORT_PATHS:

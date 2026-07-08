@@ -35,6 +35,7 @@ TOOL_COLOR = {
     "chaostools": "#4a3aa7",       # slot 5, violet
     "chaostools-rk4": "#e34948",   # slot 6, red
     "chaostools-rk6": "#e87ba4",   # slot 7, magenta
+    "lyapax-gpu": "#eb6834",       # slot 8, orange
 }
 TOOL_LABEL = {
     "lyapax": "lyapax",
@@ -44,6 +45,7 @@ TOOL_LABEL = {
     "chaostools": "ChaosTools.jl",
     "chaostools-rk4": "ChaosTools.jl (RK4)",
     "chaostools-rk6": "ChaosTools.jl (Vern6)",
+    "lyapax-gpu": "lyapax (GPU)",
 }
 
 SYSTEM_LABEL = {
@@ -129,11 +131,54 @@ def plot_performance(by_system: dict, out_path: Path) -> None:
     plt.close(fig)
 
 
+def plot_scaling(by_system: dict, out_path: Path) -> None:
+    """Wall-clock time vs. network size d, log-log, one line/marker series
+    per tool -- lyapax's k<<d matrix-free cost vs. ChaosTools.jl's/
+    jitcode's cost blowing up with d (or, for jitcode, its build cost --
+    not shown here, see docs/background/benchmarks.md's prose -- making it
+    stop at d=50 regardless of what its single steady-state point below
+    looks like).
+    """
+    tool_order = ["lyapax", "lyapax-gpu", "chaostools-rk4", "jitcode"]
+    sizes = [50, 200, 1000, 2000]
+    systems = [f"kuramoto_scaling_d{d}" for d in sizes]
+
+    fig, ax = plt.subplots(figsize=(6.4, 4.4), facecolor=SURFACE)
+    for tool in tool_order:
+        xs, ys = [], []
+        for d, sys_key in zip(sizes, systems):
+            row = by_system.get(sys_key, {}).get(tool)
+            if row is not None:
+                xs.append(d)
+                ys.append(row["warm_s"])
+        if not xs:
+            continue
+        marker = "o" if len(xs) > 1 else "x"
+        ax.plot(xs, ys, marker=marker, color=TOOL_COLOR[tool],
+                 label=TOOL_LABEL[tool], linewidth=2, markersize=6)
+
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("network size d (n_nodes)", fontsize=9, color=INK_SECONDARY)
+    ax.set_ylabel("wall-clock time, seconds (log scale)", fontsize=9,
+                   color=INK_SECONDARY)
+    ax.set_title("Dense Kuramoto network: wall time vs. size",
+                  fontsize=11, color=INK_PRIMARY, loc="left")
+    _style_axes(ax)
+    ax.legend(frameon=False, fontsize=8.5, labelcolor=INK_SECONDARY)
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=180, facecolor=SURFACE)
+    plt.close(fig)
+
+
 def main() -> None:
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     by_system = load_results()
     plot_performance(by_system, STATIC_DIR / "benchmarks_performance.png")
+    plot_scaling(by_system, STATIC_DIR / "benchmarks_scaling.png")
     print(f"Wrote {STATIC_DIR / 'benchmarks_performance.png'}")
+    print(f"Wrote {STATIC_DIR / 'benchmarks_scaling.png'}")
 
 
 if __name__ == "__main__":
