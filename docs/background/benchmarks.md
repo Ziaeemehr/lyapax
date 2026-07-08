@@ -89,49 +89,38 @@ since it has no delay-equation support).
 
 ## Performance
 
-Wall-clock time, reported both as a first call (includes JIT trace/
-compile time for `lyapax`/`jitcode`/`jitcdde`) and a warm call
-(steady-state, post-compile), so a one-time compilation cost doesn't
-distort the number meant to characterize steady-state throughput. The
-GPU columns re-run the same `lyapax` scripts with a CUDA backend rather
-than CPU — see `benchmarks/collect_results.py` for how that pass is
-skipped (with a warning, not a failure) when no working GPU is found.
+Warm-call wall-clock time only (steady-state, post-compile) — first-call
+timings aren't shown here. `lyapax`/`jitcode`/`jitcdde`/`ChaosTools.jl`
+all pay a one-time JIT/compile cost on their first call, but since each
+benchmark script runs every integrator variant back-to-back in one
+process, whichever tool happens to run *first* in a script absorbs a
+large, shared one-time cost (JAX backend init, Julia package
+precompilation, etc.) that has nothing to do with that specific tool or
+system — making first-call numbers a comparison of subprocess ordering,
+not of compile cost. The GPU columns re-run the same `lyapax` scripts
+with a CUDA backend rather than CPU — see `benchmarks/collect_results.py`
+for how that pass is skipped (with a warning, not a failure) when no
+working GPU is found.
 
 <!-- AUTO:performance -->
-| System | lyapax (warm) | lyapax (RK6) (warm) | lyapax (GPU) (warm) | lyapax (RK6, GPU) (warm) | jitcode (warm) | jitcdde (warm) | ChaosTools.jl (warm) | lyapax (1st call) | lyapax (RK6) (1st call) | lyapax (GPU) (1st call) | lyapax (RK6, GPU) (1st call) | jitcode (1st call) | jitcdde (1st call) | ChaosTools.jl (1st call) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Linear ODE (Tier 0.1) | `0.259s` | `0.457s` | `0.919s` | `1.460s` | `0.190s` | -- | `0.003s` | `1.46s` | `0.48s` | `2.66s` | `1.54s` | `0.88s` | -- | `5.05s` |
-| Lorenz | `0.372s` | `0.693s` | `1.737s` | `3.487s` | `0.589s` | -- | `0.010s` | `1.58s` | `0.66s` | `3.41s` | `3.43s` | `1.45s` | -- | `5.12s` |
-| Rössler | `0.420s` | `0.681s` | `4.827s` | `9.486s` | `2.002s` | -- | `0.029s` | `1.62s` | `0.70s` | `6.33s` | `9.36s` | `2.79s` | -- | `5.12s` |
-| 4-node network (Tier 3.1) | `0.403s` | `0.691s` | `1.175s` | `2.290s` | `0.188s` | -- | `0.004s` | `1.60s` | `0.68s` | `2.94s` | `2.36s` | `1.10s` | -- | `5.51s` |
-| Linear scalar DDE (Tier 4.2) | `0.322s` | `0.424s` | `0.733s` | `0.853s` | -- | `0.020s` | -- | `1.58s` | `0.43s` | `2.37s` | `0.90s` | -- | `1.01s` | -- |
-| Mackey-Glass | `0.563s` | `0.865s` | `1.442s` | `1.964s` | -- | `10.149s` | -- | `2.06s` | `0.87s` | `3.47s` | `2.01s` | -- | `16.05s` | -- |
+| System | lyapax | lyapax (RK6) | lyapax (GPU) | lyapax (RK6, GPU) | jitcode | jitcdde | ChaosTools.jl |
+|---|---|---|---|---|---|---|---|
+| Linear ODE (Tier 0.1) | `0.259s` | `0.457s` | `0.919s` | `1.460s` | `0.190s` | -- | `0.003s` |
+| Lorenz | `0.372s` | `0.693s` | `1.737s` | `3.487s` | `0.589s` | -- | `0.010s` |
+| Rössler | `0.420s` | `0.681s` | `4.827s` | `9.486s` | `2.002s` | -- | `0.029s` |
+| 4-node network (Tier 3.1) | `0.403s` | `0.691s` | `1.175s` | `2.290s` | `0.188s` | -- | `0.004s` |
+| Linear scalar DDE (Tier 4.2) | `0.322s` | `0.424s` | `0.733s` | `0.853s` | -- | `0.020s` | -- |
+| Mackey-Glass | `0.563s` | `0.865s` | `1.442s` | `1.964s` | -- | `10.149s` | -- |
 <!-- END AUTO:performance -->
 
-The plots below are generated from the same `benchmarks/results.json`
-snapshot as the tables above; regenerate both together with
-`python benchmarks/report_plots.py`.
-
-### Where lyapax comes out ahead
-
-`lyapax` and the compiled-C tools (`jitcode`/`jitcdde`) both pay a
-one-time trace/compile cost, then run a tight numerical loop for every
-call after — so the warm-call time is the fairer comparison for
-steady-state throughput, and `jitcode`/`jitcdde` are the tools closest
-to `lyapax`'s own execution model (unlike `ChaosTools.jl`, which has
-near-zero call overhead on these small toy systems and is the fastest
-tool for most of them regardless). The chart below expresses each
-system as a speedup ratio (competitor warm time ÷ lyapax warm time) on
-a log scale: a bar above the `1×` line means lyapax was faster on that
-system, below means it wasn't — every system is shown, not just the
-favorable ones.
-
-![lyapax speedup vs. jitcode/jitcdde/ChaosTools.jl, per benchmark system](/_static/benchmarks_speedup.png)
-
-### Full performance picture
-
-For absolute context (not just relative to lyapax): every tool's warm
-wall-clock time per system, log-scaled since the range spans several
-orders of magnitude.
+The plot below is generated from the same `benchmarks/results.json`
+snapshot as the tables above; regenerate it with
+`python benchmarks/report_plots.py`. It's every tool's warm wall-clock
+time per system, log-scaled since the range spans several orders of
+magnitude -- `jitcode`/`jitcdde` are the tools closest to `lyapax`'s own
+execution model (a one-time trace/compile, then a tight numerical loop
+for every call after); `ChaosTools.jl` has near-zero per-call overhead
+on these small toy systems and is the fastest tool for most of them
+regardless.
 
 ![Warm wall-clock time per system, all tools](/_static/benchmarks_performance.png)

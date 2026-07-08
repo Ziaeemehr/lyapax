@@ -251,17 +251,14 @@ def build_performance_table(by_system: dict) -> str:
         "mackey_glass_tier4.1": "Mackey-Glass",
     }
     tools = _present(by_system, systems, order)
-    headers = ["System"] + [f"{TOOL_LABEL[t]} (warm)" for t in tools] \
-        + [f"{TOOL_LABEL[t]} (1st call)" for t in tools]
+    headers = ["System"] + [TOOL_LABEL[t] for t in tools]
     rows = []
     for sys_key in systems:
         sys_rows = by_system.get(sys_key, {})
         if not sys_rows:
             continue
         warm = [f"`{sys_rows[t]['warm_s']:.3f}s`" if t in sys_rows else "--" for t in tools]
-        first = [f"`{sys_rows[t]['first_call_s']:.2f}s`" if t in sys_rows else "--"
-                 for t in tools]
-        rows.append([labels[sys_key], *warm, *first])
+        rows.append([labels[sys_key], *warm])
     return _md_table(headers, rows)
 
 

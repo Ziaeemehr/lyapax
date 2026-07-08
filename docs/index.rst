@@ -26,6 +26,7 @@ Requires ``jax>=0.10``, Python ``>=3.11``.
    :maxdepth: 1
    :caption: Background
 
+   background/motivation
    background/lyapunov_exponents
 
 .. toctree::
