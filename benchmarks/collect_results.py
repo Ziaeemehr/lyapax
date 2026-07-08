@@ -36,6 +36,7 @@ LYAPAX_SCRIPTS = [
     HERE / "lyapax" / "network.py",
     HERE / "lyapax" / "linear_scalar_dde.py",
     HERE / "lyapax" / "mackey_glass.py",
+    HERE / "lyapax" / "network_scaling.py",
 ]
 
 PY_SCRIPTS = LYAPAX_SCRIPTS + [
@@ -43,6 +44,7 @@ PY_SCRIPTS = LYAPAX_SCRIPTS + [
     HERE / "jitcode" / "lorenz.py",
     HERE / "jitcode" / "rossler.py",
     HERE / "jitcode" / "network.py",
+    HERE / "jitcode" / "network_scaling.py",
     HERE / "jitcdde" / "linear_scalar.py",
     HERE / "jitcdde" / "mackey_glass.py",
 ]
@@ -53,6 +55,7 @@ JL_SCRIPTS = [
     HERE / "chaostools" / "rossler.jl",
     HERE / "chaostools" / "network.jl",
     HERE / "chaostools" / "maps.jl",
+    HERE / "chaostools" / "network_scaling.jl",
 ]
 
 
