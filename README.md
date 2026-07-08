@@ -76,11 +76,14 @@ differentiating through an augmented `(state, ring_buffer)` carry.
 
 **What this does *not* do:**
 
-- **No adaptive/stiff ODE solvers.** `step_fn` is whatever fixed-step map
-  you hand it (`ode_problem(..., integrator="rk4")` by default, direct
-  `rk4_step`/`euler_step` step functions, or Euler/Heun/RK6 via
-  `lyapax.simulator`). Exponents are for the numerical time-`dt` map, not
-  an exact flow — check `dt`-convergence for anything you report.
+- **No stiff (implicit) ODE solvers.** `step_fn` is whatever integrator
+  you hand it — a fixed-step map (`ode_problem(..., integrator="rk4")` by
+  default, direct `rk4_step`/`euler_step` step functions, or Euler/Heun/RK6
+  via `lyapax.simulator`), or an adaptive-step *explicit* one via the
+  optional `adaptive` extra (`lyapax.adaptive.diffrax_adaptive_step`,
+  backed by diffrax; ODE-only). Exponents are for the numerical time-`dt`
+  map (or accepted-step sequence, for the adaptive integrator), not an
+  exact flow — check `dt`/tolerance convergence for anything you report.
 - **DDE delays must be known and fixed**, resolved one of two ways. By
   default (grid-snapped), a physical delay `tau` is rounded to the
   nearest multiple of `dt` (`lyapax.dde.resolve_tau_steps`); use

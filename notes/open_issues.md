@@ -156,7 +156,29 @@ system, delayed or not, regardless of the base method's nominal order.
 
 Full writeup: `notes/stepping_accuracy_review.md`, Part C.
 
-## 4. Adaptive ODE integration -- not started; decided to depend on diffrax, not hand-roll
+## 4. Adaptive ODE integration -- RESOLVED (implemented via diffrax, M9)
+
+**Implemented 2026-07-08, `lyapax.adaptive.diffrax_adaptive_step`** (see
+`notes/milestones.md` M9 for the full writeup). Summary of what changed
+relative to the plan below: no `core.py` changes were needed at all (the
+adaptive `step_fn` satisfies the exact same `state -> new_state` contract
+`_advance` already assumes); a diffrax solver must be constructed with
+`scan_kind="lax"` or `jax.jvp` through it raises `TypeError` (a diffrax-
+internals surprise, found via an isolated test before wiring anything up);
+diffrax's `PIDController` already `stop_gradient`s its own step-size
+decisions internally, so `lyapax` needed no extra `stop_gradient` calls;
+and differentiating a Lyapunov exponent through this integrator works with
+`jax.jacfwd` (forward-mode) but **not** `jax.grad`/`jax.jacrev` (reverse-
+mode can't replay a dynamic-trip-count `lax.while_loop` backward at all --
+a more fundamental limitation than the "non-smooth at accept/reject
+boundaries" caveat anticipated below). DDE stays fixed-step only, per
+item 5, with an explicit rejection if an adaptive integrator is passed to
+`dde_problem`/`network_dde_problem`.
+
+<details>
+<summary>Original planning note (2026-07-07, pre-implementation)</summary>
+
+Not started; decided to depend on diffrax, not hand-roll.
 
 A design exists (`notes/stepping_accuracy_review.md`, Part A: an
 `integrator` value backed by `jax.lax.while_loop`, `dt` kept as the
@@ -228,6 +250,8 @@ user-facing function.
 
 Not yet turned into an implementation plan or milestone entry -- this is
 a design decision recorded for later, not started work.
+
+</details>
 
 ## 5. Combined adaptive-step DDE -- correctly out of scope for now
 

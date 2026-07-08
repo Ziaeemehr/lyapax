@@ -29,7 +29,12 @@ and the former does not -- and a CPU-vs-GPU wall-time comparison across
 growing network size, showing that ``lyapax``'s GPU support only pays off
 once the per-step arithmetic is large enough to amortize a GPU's fixed
 kernel-launch/transfer overhead, with the crossover point measured rather
-than asserted.
+than asserted -- and an adaptive-step ODE integrator
+(``lyapax.adaptive.diffrax_adaptive_step``, backed by diffrax) that decouples
+the renormalization sampling interval from the integrator's own internal
+step size, with a tolerance-convergence sweep, a cross-check against
+fixed-step rk4, and a demonstration that differentiating a Lyapunov exponent
+through it requires ``jax.jacfwd`` rather than ``jax.grad``.
 
 New capability -> new demo: as engine features land (a new coupling kind, a
 new delay structure, a performance change, ...), add a runnable example

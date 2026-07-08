@@ -369,6 +369,13 @@ def make_step_fn(
             "read time -- decrease dt below tau instead."
         )
 
+    if getattr(integrator, "_lyapax_adaptive_ode_only", False):
+        raise ValueError(
+            "adaptive ODE integrators (lyapax.adaptive.diffrax_adaptive_step) "
+            "are not supported for DDEs -- diffrax has no DDE support "
+            "(patrick-kidger/diffrax#406). DDE integration stays fixed-step "
+            "only; see notes/open_issues.md item 5 and notes/milestones.md M9.3."
+        )
     cvar_idx = jnp.array(list(cvar_indices), dtype=jnp.int32)
     integrate = _STEP_INTEGRATORS[integrator] if isinstance(integrator, str) else integrator
 

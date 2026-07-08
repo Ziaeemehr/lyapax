@@ -23,6 +23,10 @@ quickly whether it fits your problem.
   {doc}`lyapax_implementation` for the tradeoff.
 - **Discrete chaotic maps** (logistic, Hénon, or any user map) — same
   engine, `dt=1.0` per iterate, no integrator involved.
+- **Adaptive-step ODE integration** (optional `adaptive` extra,
+  `lyapax.adaptive.diffrax_adaptive_step`) — drops into `ode_problem`
+  alongside the fixed-step builtins with no other code changes; ODE-only,
+  see the gaps below.
 - **Batched parameter / initial-condition sweeps** via `jax.vmap`
   (`sweep_lyapunov_spectrum`): a whole parameter grid as one XLA call.
 - **Transparent GPU execution** — JAX picks the backend; no code
@@ -33,12 +37,21 @@ quickly whether it fits your problem.
 
 ## What lyapax cannot do
 
-- **No adaptive or stiff ODE integration.** Every integrator is
-  fixed-step (Euler / Heun / RK4 / RK6); there is no adaptive-step or
-  implicit solver. The computed exponents are those of the numerical
-  time-`dt` map, not the exact continuous flow — checking convergence
-  in `dt` is the caller's responsibility (the gallery's
-  speed-and-accuracy example shows how).
+- **No stiff (implicit) ODE integration.** The built-in integrators are
+  fixed-step (Euler / Heun / RK4 / RK6); adaptive-step *explicit*
+  Runge-Kutta is available for ODEs via the optional `adaptive` extra
+  (`lyapax.adaptive.diffrax_adaptive_step`, backed by
+  [diffrax](https://docs.kidger.site/diffrax/)) — but there is still no
+  implicit solver, so genuinely stiff systems are out of scope. The
+  computed exponents are those of the numerical time-`dt` map (or, for
+  the adaptive integrator, of the accepted-step sequence under a given
+  `rtol`/`atol`), not the exact continuous flow — checking convergence in
+  `dt` (or tolerance) is the caller's responsibility (the gallery's
+  speed-and-accuracy and adaptive-ODE examples show how). The adaptive
+  integrator's internal step-size control is a dynamic-trip-count
+  `while_loop`, so differentiating through it needs `jax.jacfwd`
+  (forward-mode); `jax.grad`/`jax.jacrev` (reverse-mode) do not work
+  through it.
 - **DDE delays must be known and fixed.** No state-dependent or
   distributed delays. Grid-snapped mode further rounds $\tau$ to an
   integer multiple of `dt`; only `interpolate=True` removes that
