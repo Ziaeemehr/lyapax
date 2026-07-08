@@ -28,3 +28,18 @@ run_fn = () -> lyapunovspectrum(ds, 2000, 3; u0=u0, Δt=0.01, Ttr=5.0)
 first_s, warm_s, exponents = time_and_run(run_fn)
 
 emit("chaostools", "linear_ode_tier0.1", exponents, first_s, warm_s)
+
+# Same-algorithm variants: RK4() and Vern6() (the tableau lyapax's rk6_step
+# implements, see lyapax.integrators.rk6_combine's docstring) at lyapax's
+# own fixed dt=1e-3, adaptive=false -- a genuine same-method comparison,
+# unlike the Tsit5 run above, whose adaptive step-size control means its
+# timing reflects a different amount of numerical work, not just a
+# different implementation of the same work.
+for (alg, tool, dt_raw) in ((RK4(), "chaostools-rk4", 1e-3), (Vern6(), "chaostools-rk6", 1e-3))
+    ds_fixed = CoupledODEs(linear_rule, u0, nothing; diffeq=(alg=alg, adaptive=false, dt=dt_raw))
+    local run_fn
+    run_fn = () -> lyapunovspectrum(ds_fixed, 2000, 3; u0=u0, Δt=0.01, Ttr=5.0)
+    local first_s, warm_s, exponents
+    first_s, warm_s, exponents = time_and_run(run_fn)
+    emit(tool, "linear_ode_tier0.1", exponents, first_s, warm_s)
+end

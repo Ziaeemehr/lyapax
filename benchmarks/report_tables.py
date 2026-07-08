@@ -36,6 +36,8 @@ TOOL_LABEL = {
     "jitcode": "jitcode",
     "jitcdde": "jitcdde",
     "chaostools": "ChaosTools.jl",
+    "chaostools-rk4": "ChaosTools.jl (RK4)",
+    "chaostools-rk6": "ChaosTools.jl (Vern6)",
 }
 
 # ---- reference values ------------------------------------------------
@@ -120,7 +122,8 @@ def _spectrum_diff(row: dict, exact: np.ndarray) -> float:
 # ---- table builders ----------------------------------------------------
 
 def build_ode_table(by_system: dict) -> str:
-    order = ["lyapax", "lyapax-rk6", "jitcode", "chaostools"]
+    order = ["lyapax", "lyapax-rk6", "jitcode", "chaostools",
+              "chaostools-rk4", "chaostools-rk6"]
     systems = ["linear_ode_tier0.1", "lorenz_tier1.1", "rossler_tier1.2",
                "linear_network_tier3.1"]
     tools = _present(by_system, systems, order)
@@ -238,7 +241,8 @@ def build_dde_table(by_system: dict) -> str:
 
 def build_performance_table(by_system: dict) -> str:
     order = ["lyapax", "lyapax-rk6", "lyapax-gpu", "lyapax-rk6-gpu",
-              "jitcode", "jitcdde", "chaostools"]
+              "jitcode", "jitcdde", "chaostools", "chaostools-rk4",
+              "chaostools-rk6"]
     systems = ["linear_ode_tier0.1", "lorenz_tier1.1", "rossler_tier1.2",
                "linear_network_tier3.1", "linear_scalar_dde_tier4.2",
                "mackey_glass_tier4.1"]

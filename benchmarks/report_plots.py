@@ -28,11 +28,13 @@ BASELINE = "#c3c2b7"
 SURFACE = "#fcfcfb"
 
 TOOL_COLOR = {
-    "lyapax": "#2a78d6",       # categorical slot 1, blue
-    "lyapax-rk6": "#1baf7a",   # slot 2, aqua
-    "jitcode": "#eda100",      # slot 3, yellow
-    "jitcdde": "#008300",      # slot 4, green
-    "chaostools": "#4a3aa7",   # slot 5, violet
+    "lyapax": "#2a78d6",           # categorical slot 1, blue
+    "lyapax-rk6": "#1baf7a",       # slot 2, aqua
+    "jitcode": "#eda100",          # slot 3, yellow
+    "jitcdde": "#008300",          # slot 4, green
+    "chaostools": "#4a3aa7",       # slot 5, violet
+    "chaostools-rk4": "#e34948",   # slot 6, red
+    "chaostools-rk6": "#e87ba4",   # slot 7, magenta
 }
 TOOL_LABEL = {
     "lyapax": "lyapax",
@@ -40,6 +42,8 @@ TOOL_LABEL = {
     "jitcode": "jitcode",
     "jitcdde": "jitcdde",
     "chaostools": "ChaosTools.jl",
+    "chaostools-rk4": "ChaosTools.jl (RK4)",
+    "chaostools-rk6": "ChaosTools.jl (Vern6)",
 }
 
 SYSTEM_LABEL = {
@@ -83,12 +87,15 @@ def plot_performance(by_system: dict, out_path: Path) -> None:
     for -- see docs/background/jax_performance.md for where GPU does pay
     off.
     """
-    tool_order = ["lyapax", "lyapax-rk6", "jitcode", "jitcdde", "chaostools"]
+    tool_order = ["lyapax", "lyapax-rk6", "jitcode", "jitcdde", "chaostools",
+                  "chaostools-rk4", "chaostools-rk6"]
     systems = [s for s in SYSTEM_ORDER if s in by_system]
+    counts = [sum(1 for t in tool_order if t in by_system[s]) for s in systems]
 
     fig, axes = plt.subplots(
-        len(systems), 1, figsize=(6.4, 1.05 * len(systems) + 0.6),
+        len(systems), 1, figsize=(6.4, 0.34 * sum(counts) + 0.9),
         facecolor=SURFACE,
+        gridspec_kw={"height_ratios": counts},
     )
     fig.suptitle("Warm wall-clock time per system (lower is faster)",
                   color=INK_PRIMARY, fontsize=11, y=0.995)

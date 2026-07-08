@@ -57,13 +57,13 @@ since it has no delay-equation support).
 ### ODE systems
 
 <!-- AUTO:ode-accuracy -->
-| System | lyapax | lyapax (RK6) | jitcode | ChaosTools.jl | Reference | Notes |
-|---|---|---|---|---|---|---|
-| Linear ODE (Tier 0.1) | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | exact `[-1, -2, -5]` | max abs diff from reference -- lyapax: `9.45e-07`, lyapax (RK6): `9.45e-07`, jitcode: `1.16e-05`, ChaosTools.jl: `8.76e-11` |
-| Lorenz λ1 (Tier 1.1/2) | `0.90172` | `0.90878` | `0.90105` | `0.89674` | published `≈0.9056` | max abs diff from reference -- lyapax: `3.88e-03`, lyapax (RK6): `3.18e-03`, jitcode: `4.55e-03`, ChaosTools.jl: `8.86e-03` |
-| Lorenz sum(λ) | `-13.6666` | `-13.6667` | `-13.6667` | `-13.5228` | exact `-13.6667` (`-(σ+1+β)`) | max abs diff from reference -- lyapax: `1.02e-04`, lyapax (RK6): `1.79e-09`, jitcode: `1.56e-06`, ChaosTools.jl: `1.44e-01` |
-| Rössler λ1 (Tier 1.2/2) | `0.07080` | `0.08017` | `0.07895` | `0.06205` | qualitative `≈0.07` | max abs diff from reference -- lyapax: `7.98e-04`, lyapax (RK6): `1.02e-02`, jitcode: `8.95e-03`, ChaosTools.jl: `7.95e-03` |
-| 4-node linear network (Tier 3.1) | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0014, -1.9986, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | exact `[-1, -2, -2, -3]` | max abs diff from reference -- lyapax: `3.53e-06`, lyapax (RK6): `3.53e-06`, jitcode: `1.36e-03`, ChaosTools.jl: `2.23e-06` |
+| System | lyapax | lyapax (RK6) | jitcode | ChaosTools.jl | ChaosTools.jl (RK4) | ChaosTools.jl (Vern6) | Reference | Notes |
+|---|---|---|---|---|---|---|---|---|
+| Linear ODE (Tier 0.1) | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | exact `[-1, -2, -5]` | max abs diff from reference -- lyapax: `9.45e-07`, lyapax (RK6): `9.45e-07`, jitcode: `3.23e-06`, ChaosTools.jl: `8.76e-11`, ChaosTools.jl (RK4): `2.80e-11`, ChaosTools.jl (Vern6): `2.03e-12` |
+| Lorenz λ1 (Tier 1.1/2) | `0.90172` | `0.90878` | `0.90782` | `0.89674` | `0.90632` | `0.91334` | published `≈0.9056` | max abs diff from reference -- lyapax: `3.88e-03`, lyapax (RK6): `3.18e-03`, jitcode: `2.22e-03`, ChaosTools.jl: `8.86e-03`, ChaosTools.jl (RK4): `7.17e-04`, ChaosTools.jl (Vern6): `7.74e-03` |
+| Lorenz sum(λ) | `-13.6666` | `-13.6667` | `-13.6667` | `-13.5228` | `-13.6666` | `-13.6667` | exact `-13.6667` (`-(σ+1+β)`) | max abs diff from reference -- lyapax: `1.02e-04`, lyapax (RK6): `1.79e-09`, jitcode: `1.55e-06`, ChaosTools.jl: `1.44e-01`, ChaosTools.jl (RK4): `1.03e-04`, ChaosTools.jl (Vern6): `1.82e-09` |
+| Rössler λ1 (Tier 1.2/2) | `0.07080` | `0.08017` | `0.07244` | `0.06205` | `0.07545` | `0.07264` | qualitative `≈0.07` | max abs diff from reference -- lyapax: `7.98e-04`, lyapax (RK6): `1.02e-02`, jitcode: `2.44e-03`, ChaosTools.jl: `7.95e-03`, ChaosTools.jl (RK4): `5.45e-03`, ChaosTools.jl (Vern6): `2.64e-03` |
+| 4-node linear network (Tier 3.1) | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | exact `[-1, -2, -2, -3]` | max abs diff from reference -- lyapax: `3.53e-06`, lyapax (RK6): `3.53e-06`, jitcode: `3.83e-06`, ChaosTools.jl: `2.23e-06`, ChaosTools.jl (RK4): `2.18e-06`, ChaosTools.jl (Vern6): `2.18e-06` |
 <!-- END AUTO:ode-accuracy -->
 
 ### Map systems
@@ -81,9 +81,9 @@ since it has no delay-equation support).
 <!-- AUTO:dde-accuracy -->
 | System | lyapax | lyapax (RK6) | jitcdde | Reference | Notes |
 |---|---|---|---|---|---|
-| Linear scalar DDE (Tier 4.2) | `-0.60050` | `-0.60050` | `-0.59830` | Lambert W root `-0.598304` | max abs diff from reference -- lyapax: `2.19e-03`, lyapax (RK6): `2.19e-03`, jitcdde: `6.51e-07` |
-| Mackey-Glass λ1 (Tier 4.1) | `0.00796` | `0.00727` | `0.00502` | qualitative `1e-03`-`1e-02` | lyapax inside band; lyapax (RK6) inside band; jitcdde inside band |
-| Mackey-Glass KY dimension | `2.206` | `2.191` | `2.129` | `2.0`-`3.0` | lyapax inside band; lyapax (RK6) inside band; jitcdde inside band |
+| Linear scalar DDE (Tier 4.2) | `-0.60050` | `-0.60050` | `-0.59831` | Lambert W root `-0.598304` | max abs diff from reference -- lyapax: `2.19e-03`, lyapax (RK6): `2.19e-03`, jitcdde: `8.01e-07` |
+| Mackey-Glass λ1 (Tier 4.1) | `0.00796` | `0.00727` | `0.00531` | qualitative `1e-03`-`1e-02` | lyapax inside band; lyapax (RK6) inside band; jitcdde inside band |
+| Mackey-Glass KY dimension | `2.206` | `2.191` | `2.137` | `2.0`-`3.0` | lyapax inside band; lyapax (RK6) inside band; jitcdde inside band |
 | 2-node delayed linear network (Tier 4.3) | not yet run | not yet run | not yet run | Lambert W root (2x2) | deferred -- not yet run against jitcdde |
 <!-- END AUTO:dde-accuracy -->
 
@@ -102,15 +102,28 @@ with a CUDA backend rather than CPU — see `benchmarks/collect_results.py`
 for how that pass is skipped (with a warning, not a failure) when no
 working GPU is found.
 
+The default `ChaosTools.jl` column uses its own idiomatic choice
+(`Tsit5`, adaptive step control) — a different algorithm from `lyapax`'s
+fixed-step `rk4`/`rk6`, so that timing isn't a same-method comparison
+(see the "Comparison targets" fairness note above). The **`ChaosTools.jl
+(RK4)`** and **`ChaosTools.jl (Vern6)`** columns close that gap: they run
+`OrdinaryDiffEq.jl`'s `RK4()` and `Vern6()` (the exact tableau `lyapax`'s
+`rk6_step` implements — see `lyapax.integrators.rk6_combine`'s
+docstring) with `adaptive=false` at `lyapax`'s own fixed `dt`, so the two
+sides are running the literal same algorithm and step size. The gap
+that remains at that point is a genuine implementation/runtime
+difference (Julia/LLVM vs. JAX/XLA at these small state sizes), not an
+algorithm mismatch.
+
 <!-- AUTO:performance -->
-| System | lyapax | lyapax (RK6) | lyapax (GPU) | lyapax (RK6, GPU) | jitcode | jitcdde | ChaosTools.jl |
-|---|---|---|---|---|---|---|---|
-| Linear ODE (Tier 0.1) | `0.259s` | `0.457s` | `0.919s` | `1.460s` | `0.190s` | -- | `0.003s` |
-| Lorenz | `0.372s` | `0.693s` | `1.737s` | `3.487s` | `0.589s` | -- | `0.010s` |
-| Rössler | `0.420s` | `0.681s` | `4.827s` | `9.486s` | `2.002s` | -- | `0.029s` |
-| 4-node network (Tier 3.1) | `0.403s` | `0.691s` | `1.175s` | `2.290s` | `0.188s` | -- | `0.004s` |
-| Linear scalar DDE (Tier 4.2) | `0.322s` | `0.424s` | `0.733s` | `0.853s` | -- | `0.020s` | -- |
-| Mackey-Glass | `0.563s` | `0.865s` | `1.442s` | `1.964s` | -- | `10.149s` | -- |
+| System | lyapax | lyapax (RK6) | lyapax (GPU) | lyapax (RK6, GPU) | jitcode | jitcdde | ChaosTools.jl | ChaosTools.jl (RK4) | ChaosTools.jl (Vern6) |
+|---|---|---|---|---|---|---|---|---|---|
+| Linear ODE (Tier 0.1) | `0.264s` | `0.449s` | `0.942s` | `1.518s` | `0.193s` | -- | `0.006s` | `0.007s` | `0.010s` |
+| Lorenz | `0.393s` | `0.659s` | `1.790s` | `3.470s` | `0.640s` | -- | `0.010s` | `0.021s` | `0.037s` |
+| Rössler | `0.461s` | `0.750s` | `4.782s` | `9.454s` | `2.159s` | -- | `0.031s` | `0.076s` | `0.123s` |
+| 4-node network (Tier 3.1) | `0.429s` | `0.761s` | `1.189s` | `2.304s` | `0.203s` | -- | `0.004s` | `0.012s` | `0.018s` |
+| Linear scalar DDE (Tier 4.2) | `0.330s` | `0.462s` | `0.692s` | `0.911s` | -- | `0.021s` | -- | -- | -- |
+| Mackey-Glass | `0.652s` | `0.895s` | `1.450s` | `2.100s` | -- | `10.564s` | -- | -- | -- |
 <!-- END AUTO:performance -->
 
 The plot below is generated from the same `benchmarks/results.json`
