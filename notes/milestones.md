@@ -593,8 +593,9 @@ already solved.
 
 ## M7 — Stretch goals (not required for v1)
 
-- Adaptive-step ODE integration (diffrax) + Benettin, as an alternative to
-  fixed-step for stiff/multi-timescale ODE systems.
+- ~~Adaptive-step ODE integration (diffrax) + Benettin, as an alternative
+  to fixed-step for stiff/multi-timescale ODE systems.~~ — promoted to a
+  full milestone, see **M9**.
 - State-dependent or distributed delays.
 - ~~Sigmoidal/kuramoto coupling kernels in the DDE tangent path~~ — **done**
   as a side effect of M4's redesign: `coupling_fn` in
@@ -626,9 +627,9 @@ genuine design decisions, tracked here instead of done inline:
   fixed `dt`. Add a convergence-vs-`dt` test for at least one ODE
   (Lorenz or Rössler) and one more DDE case, per the review's Section 2
   "Improvement".
-- [ ] Diffrax adapter for adaptive/stiff ODE integration — already
-  tracked as an M7 stretch goal; diffrax has no DDE support as of M0's
-  research, so this would be ODE-only.
+- [ ] Diffrax adapter for adaptive/stiff ODE integration — was tracked as
+  an M7 stretch goal; promoted to a full milestone (not yet implemented),
+  see **M9** below.
 - [ ] `pmap`/`shard_map` examples for multi-device parameter sweeps —
   M6's `sweep.py` is single-device `jax.vmap` only; document that
   explicitly and add a `jit(vmap(...))` example before considering
@@ -653,6 +654,194 @@ genuine design decisions, tracked here instead of done inline:
 - [ ] Optional GPU CI job / periodic manual validation record — CI added
   in this session is CPU-only per the review's own recommendation;
   `tests/test_gpu.py` stays opt-in and manually run for now.
+
+## M9 — Adaptive-step integration (ODE via diffrax, DDE hand-rolled) — not started
+
+Branch: `adaptive`. Design basis: `notes/stepping_accuracy_review.md` Part A
+(the original sketch) and `notes/open_issues.md` item 4 (2026-07-07 decision
+recording *why* the split is forced, not a preference) and item 5 (why
+combined adaptive-step DDE stays out of scope). This milestone turns those
+decisions into an implementation plan.
+
+### Why ODE and DDE split here, restated briefly
+
+`diffrax` has no DDE support (`patrick-kidger/diffrax#406`, open since April
+2024, re-checked 2026-07-07 — still unresolved). So:
+
+- **ODE: depend on `diffrax`.** Hand-rolling an adaptive, differentiable
+  integrator means re-deriving embedded Butcher tableaus, error estimators,
+  PID step-size control, and adjoint-safe gradients through accept/reject
+  branching — solved, battle-tested work; not worth competing with.
+- **DDE: no library option exists.** If adaptive-step DDE is ever built, it
+  has to be ours. This milestone scopes *whether* to build it at all (see
+  M9.3) separately from the ODE work, which starts now.
+
+### M9.1 — Dependency and scope decision
+
+- [ ] Add `diffrax` as an optional dependency (`pyproject.toml`'s
+  `[project.optional-dependencies]`, a new `adaptive` extra — not a core
+  dependency, so `lyapax`'s fixed-step path keeps zero new required deps).
+  Pin a floor version compatible with the `jax>=0.10` floor already in use;
+  verify against the dedicated `lyapax` dev environment
+  (`/home/ziaee/envs/lyapax`, not `vbienv`) before pinning a number.
+- [ ] Confirm `diffrax`'s minimum supported JAX version doesn't force
+  bumping `lyapax`'s own `jax>=0.10` floor; record whatever version was
+  actually tested against in the dependencies comment, matching the
+  existing "Verified against jax==0.10.2" convention in `pyproject.toml`.
+- [ ] Decide the public entry point shape: reuse `ode_problem(rhs, state0,
+  dt, integrator=...)` with a new `integrator` value (e.g.
+  `integrator="dopri5"` or an `AdaptiveODE(solver=..., rtol=..., atol=...)`
+  object), vs. a separate `adaptive_ode_problem(...)` constructor. Leaning
+  towards reusing `ode_problem` per `notes/stepping_accuracy_review.md`
+  Part A's sketch — same downstream `lyapunov_spectrum(problem,
+  n_steps=...)` call shape either way, so this is purely an ergonomics
+  choice, not an architectural one.
+
+### M9.2 — ODE: diffrax-backed adaptive stepping
+
+Three structural changes are required on `lyapax`'s side of the boundary
+(diffrax itself needs no changes) — all identified in
+`notes/open_issues.md` item 4, expanded here into concrete edits:
+
+1. **Renorm cadence: step-count → elapsed-time.**
+   `core.py`'s `_run_renorm_scan` currently drives a fixed-length
+   `jax.lax.scan` of `renorm_every` *raw steps* per QR block — correct
+   because fixed-step `step_fn` always advances by exactly `dt`. Adaptive
+   stepping doesn't take a fixed number of internal steps per unit of
+   sampled time, so the per-block advance becomes "run accepted diffrax
+   steps until elapsed time reaches the next renorm boundary
+   (`renorm_every * dt`)" — a bounded `jax.lax.while_loop` nested inside
+   (or replacing one iteration of) the outer `lax.scan`, not a second fixed
+   -length scan.
+   - [ ] New `_advance_adaptive_block(carry, target_dt)` (or equivalent) in
+     `core.py`, gated behind the adaptive integrator, that wraps a
+     `while_loop` over `solver.step(...)` calls (see M9.2.2) until
+     accumulated `t` reaches `target_dt`, clamping the final internal step
+     so it lands exactly on the boundary (diffrax solvers support a
+     `t1` clamp per step; confirm the exact API when implementing).
+   - [ ] Existing fixed-step path (`_run_renorm_scan` as used by
+     `ode_problem`/`network_problem`/`dde_problem`) must be byte-for-byte
+     unchanged — this is purely a new code path selected by the
+     `integrator` value, not a rewrite of the existing one.
+2. **Tangent propagation rides diffrax's per-step primitive, not
+   `diffeqsolve`.** Today's tangent step is `jax.jvp(step_fn, (state,),
+   (y_col,))` per tracked column, `jax.vmap`-batched over `k` (M6's
+   matrix-free win, the partial-spectrum cost advantage this whole engine
+   is built around). `diffeqsolve` runs its own internal loop end-to-end
+   and does not compose with that per-step jvp trick — it would force
+   re-running the *whole* adaptive trajectory once per tracked tangent
+   column, discarding the O(k) cost model entirely.
+   - [ ] Use diffrax's lower-level stepping API (`solver.step(terms, t0,
+     t1, y0, args, solver_state, made_jump)` — the primitive
+     `diffeqsolve` itself is built on) as the atomic unit inside `lyapax`'s
+     own `while_loop`, so `jax.jvp` still wraps one bounded call at a
+     time, exactly like the fixed-step case.
+   - [ ] Confirm empirically (not just by reading diffrax's source) that
+     `jax.jvp` through `solver.step` produces a finite, correct tangent —
+     add a unit test isolating just this (a linear system with a known
+     tangent action, comparing `jvp`-through-`solver.step` against the
+     analytic fundamental-matrix action), *before* wiring it into the full
+     Benettin loop, so a diffrax-internals surprise is caught in isolation.
+3. **`stop_gradient` on the step-size decision.** Gradient must flow
+   through the accepted state update but not through the controller's
+   accept/reject/step-size choice (a discrete, non-differentiable
+   decision) — `diffeqsolve`'s own adjoint handles this internally, but
+   using the lower-level `solver.step` API directly means `lyapax` owns
+   getting the placement right.
+   - [ ] Identify exactly which quantity from diffrax's step-size
+     controller (likely the proposed next `dt`/`h`) needs
+     `jax.lax.stop_gradient`, and confirm via a differentiation test that
+     `jax.grad`/`jax.jacrev` of a downstream scalar (e.g. `lambda_max`,
+     tying this directly to item 6's differentiate-through-the-exponent
+     goal in `notes/open_issues.md`) doesn't silently produce all-zero or
+     NaN gradients across an accept/reject boundary.
+
+### M9.3 — DDE: adaptive stepping is *not* being built in this milestone
+
+Per `notes/open_issues.md` item 5: combined adaptive-step DDE needs history
+interpolation over an *irregular* grid (an adaptive integrator's own
+accepted-step times aren't evenly spaced, unlike the uniform ring buffer
+`interpolate=True` Hermite scheme from `notes/stepping_accuracy_review.md`
+Part B), which is substantially harder than either the ODE work above or
+the existing fixed-step DDE interpolation alone.
+
+- [ ] **Decision recorded, not deferred by omission:** DDE gets fixed-step
+  only in this milestone. Fixed-step + `interpolate=True` + `rk4` already
+  reaches the Hermite-interpolant accuracy ceiling (`notes/open_issues.md`
+  item 1's resolution, ~order 4 until the interpolant itself caps it) —
+  there is no known concrete need (stiff/multi-timescale delayed system)
+  currently motivating the extra complexity.
+- [ ] If a concrete need appears later, the shape of the work (for
+  scoping a future milestone, not to be started now): replace the uniform
+  -stride ring buffer (`lyapax/dde.py`'s `constant_history_buf0` /
+  `_resolve_horizon` / the `tau_steps`-indexed read in
+  `lyapax/simulator/step.py`) with a variable-stride history store keyed
+  by actual accepted-step times, and generalize the cubic Hermite read
+  (currently `theta = frac((t - tau) / dt)` against two *grid* points) to
+  interpolate between two *arbitrary* stored times — a new data structure,
+  not a parameter change to the existing one.
+- [ ] No code changes to `lyapax/dde.py` in this milestone; if M9.2's
+  `ode_problem` gains a new `integrator` value, confirm `dde_problem` /
+  `network_dde_problem` explicitly reject (or simply never accept) an
+  adaptive `integrator`, so a caller can't silently request something
+  unimplemented — a clear `ValueError`, not silent fixed-step fallback.
+
+### M9.4 — API surface (target shape, confirm against M9.1's decision)
+
+```python
+import diffrax
+integrator = diffrax.Dopri5()  # or a small lyapax wrapper picking rtol/atol defaults
+problem = lyapax.ode_problem(rhs, state0, dt=0.1, integrator=integrator)
+result = lyapax.lyapunov_spectrum(problem, n_steps=...)
+```
+
+No visible change to `lyapunov_spectrum`'s signature or `LyapunovResult`.
+The one internal casualty: `ODEProblem.step_fn`'s current single-function
+contract (`state -> new_state`) doesn't carry enough state for adaptive
+stepping (needs a threaded diffrax `solver_state` and the current `t`) —
+this becomes an internal carry shape difference selected by `integrator`,
+not a user-facing API change.
+
+### M9.5 — Validation plan
+
+- [ ] Convergence check: for a system with a known exact Lyapunov exponent
+  (e.g. the existing Lorenz `λ1 ≈ 0.9056` reference, or a linear system
+  with exact eigenvalues), sweep `rtol`/`atol` tighter and confirm the
+  estimate converges monotonically toward the reference, the same
+  dt-sweep-hygiene pattern already used for fixed-step (`notes/
+  validation_systems.md`).
+- [ ] Cross-check: a very tight `rtol`/`atol` should reproduce the existing
+  fixed-step `rk4`/`rk6` answer on the same system to within both methods'
+  combined error bars — confirms the new path isn't silently solving a
+  different problem, not just that it converges to *something*.
+- [ ] Differentiability check per M9.2.3 — `jax.grad` of an exponent
+  w.r.t. a `rhs` parameter is finite and matches a finite-difference
+  reference away from any accept/reject boundary.
+- [ ] Document the accept/reject non-smoothness caveat from `notes/
+  stepping_accuracy_review.md` Part A explicitly in the new integrator's
+  docstring — worth knowing, not worth blocking on.
+- [ ] New demo, `examples/plot_14_adaptive_ode.py` (next free number after
+  `plot_13_dde_history_interpolation.py`) — a new capability needs a
+  runnable `examples/` demo, not just unit tests; self-contained, with no
+  `notes/`/milestone-number references inside the example file itself.
+- [ ] New regression tests: `tests/test_adaptive_ode.py` — convergence,
+  cross-check, and differentiability tests above, plus a test that
+  `dde_problem`/`network_dde_problem` reject an adaptive `integrator`
+  (M9.3's last bullet).
+
+### Definition of done for M9
+
+- `diffrax`-backed adaptive ODE integration available through
+  `lyapax.ode_problem`/`lyapax.lyapunov_spectrum` with no change to
+  existing fixed-step call sites or results.
+- Validation plan (M9.5) fully passing, including the differentiability
+  check tying back to `notes/open_issues.md` item 6.
+- DDE stays fixed-step only, with an explicit, tested rejection of
+  adaptive `integrator` values rather than silent fallback.
+- `notes/open_issues.md` item 4 marked resolved/implemented (currently
+  "decision recorded... not started work"); item 5 stays open, now
+  pointing at M9.3's scoping notes instead of being a bare "out of scope"
+  line.
 
 ## Explicit non-goals for v1
 
