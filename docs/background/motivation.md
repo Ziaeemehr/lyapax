@@ -17,14 +17,18 @@ tools each cover only part of the space.
 
 `lyapax` fills a specific gap: a Lyapunov-spectrum engine that
 
-1. works on any differentiable JAX map, so the model is ordinary
-   Python/`jax.numpy` code rather than a symbolic expression;
-2. is matrix-free, propagating only the `k` tangent directions actually
-   requested via `jax.jvp` instead of forming a dense $d \times d$
-   Jacobian, so partial spectra of high-dimensional systems are cheap;
-3. treats parameter sweeps as a first-class, vectorized operation through
-   `jax.vmap`; and
-4. runs unchanged on CPU or GPU.
+1. **works on any differentiable JAX map**, so the model is ordinary
+   Python/`jax.numpy` code rather than a symbolic expression that must be
+   built and compiled ahead of time;
+2. **is matrix-free**, propagating only the `k` tangent directions
+   actually requested via `jax.jvp` instead of forming a dense
+   $d \times d$ Jacobian, so partial spectra of high-dimensional systems
+   are cheap — and, unlike a symbolic Jacobian, this cost is paid at
+   *run* time, not compile time (see the note on network size below);
+3. **treats parameter sweeps as a first-class, vectorized operation**
+   through `jax.vmap`; and
+4. **runs unchanged on CPU or GPU**, with no code change to move a model
+   from one to the other.
 
 It is aimed at researchers in nonlinear dynamics, computational
 neuroscience, and physics who need Lyapunov spectra of custom ODE, map, or
@@ -37,26 +41,37 @@ machinery themselves.
 - **[jitcode](https://pypi.org/project/jitcode/) and
   [jitcdde](https://pypi.org/project/jitcdde/)** compile a symbolic
   right-hand side to C and are the established Python references for ODE
-  and DDE Lyapunov spectra respectively. They are fast and mature, but the
-  model must be expressed as a symbolic expression rather than arbitrary
-  code, and neither has a GPU backend. Their integrator choice is also
-  fixed to SciPy's adaptive solvers (`dopri5`, `RK45`, `dop853`, `RK23`,
-  `BDF`, `LSODA`, `Radau`, `vode`) — there is no fixed-step classical
-  RK4/Heun option, so a step-for-step same-algorithm comparison against
-  `lyapax`'s own fixed-step integrators isn't possible without patching
-  the library (see {doc}`benchmarks`'s performance section).
+  and DDE Lyapunov spectra respectively. They are fast and mature once
+  built, but **the model must be expressed as a symbolic expression**
+  rather than arbitrary code, **neither has a GPU backend**, and their
+  integrator choice is fixed to SciPy's adaptive solvers (`dopri5`,
+  `RK45`, `dop853`, `RK23`, `BDF`, `LSODA`, `Radau`, `vode`) — there is no
+  fixed-step classical RK4/Heun option, so a step-for-step same-algorithm
+  comparison against `lyapax`'s own fixed-step integrators isn't possible
+  without patching the library (see {doc}`benchmarks`'s performance
+  section). The symbolic-then-compile step also **does not scale to
+  larger, densely coupled networks**: building and compiling `jitcode`
+  for a fully-connected 50-node Kuramoto network alone took 54 seconds
+  in a direct test, before a single integration step ran — the symbolic
+  differentiation needed for the tangent/Jacobian machinery grows with
+  the number of nonzero coupling terms (~2,450 of them at just 50 dense
+  nodes), so this cost only gets worse at the network sizes (hundreds to
+  thousands of nodes) where `lyapax`'s GPU/`vmap` path is actually meant
+  to be used. `lyapax` pays no such compile-time symbolic-differentiation
+  cost at any network size — `jax.jvp` computes the tangent direction at
+  run time from ordinary Python code.
 - **[ChaosTools.jl](https://juliadynamics.github.io/DynamicalSystemsDocs.jl/chaostools/stable/)**,
   part of `DynamicalSystems.jl`, is a mature, broad-scope Julia toolbox for
   nonlinear dynamics, including Lyapunov spectra, but it lives outside the
-  Python/NumPy ecosystem and is not designed around autodiff or GPU
-  execution. Its `OrdinaryDiffEq.jl` backend does expose fixed-step
+  Python/NumPy ecosystem and **is not designed around autodiff or GPU
+  execution**. Its `OrdinaryDiffEq.jl` backend does expose fixed-step
   classical methods (`RK4()`, `Vern6()`), which does let a genuine
   same-algorithm CPU comparison be constructed (see {doc}`benchmarks`) —
-  but `lyapunovspectrum` itself has no GPU path at all: Julia's GPU story
-  for ODEs (`DiffEqGPU.jl`) is built around parallelizing an *ensemble* of
-  independent trajectories on the device, not accelerating one small
-  system's tangent propagation, which doesn't match how a single
-  Lyapunov-spectrum run is structured. Getting a ChaosTools.jl-based
+  but `lyapunovspectrum` itself **has no GPU path at all**: Julia's GPU
+  story for ODEs (`DiffEqGPU.jl`) is built around parallelizing an
+  *ensemble* of independent trajectories on the device, not accelerating
+  one small system's tangent propagation, which doesn't match how a
+  single Lyapunov-spectrum run is structured. Getting a ChaosTools.jl-based
   computation onto a GPU at all would mean bypassing its own API and
   hand-writing the Benettin/QR loop directly against CUDA kernels.
 - **Ad hoc SciPy-based approaches** (custom scripts using finite
@@ -66,13 +81,14 @@ machinery themselves.
 - **[Diffrax](https://github.com/patrick-kidger/diffrax)** provides
   differentiable ODE/SDE/CDE solvers natively in JAX, including
   adaptive-step and stiff methods, but it is a general
-  differential-equation solver library, not a Lyapunov-spectrum package;
-  it does not itself provide tangent-space QR renormalization,
-  partial-spectrum tracking, or DDE ring-buffer handling.
+  differential-equation solver library, **not a Lyapunov-spectrum
+  package**; it does not itself provide tangent-space QR
+  renormalization, partial-spectrum tracking, or DDE ring-buffer
+  handling.
 
-`lyapax` is, to the author's knowledge, the first JAX-native package
-purpose-built for Lyapunov spectra that accepts ordinary user-written JAX
-functions (rather than symbolic expressions) and targets the
+`lyapax` is, to the author's knowledge, **the first JAX-native package
+purpose-built for Lyapunov spectra** that accepts ordinary user-written
+JAX functions (rather than symbolic expressions) and targets the
 autodiff/JIT/GPU workflow directly, while remaining a narrowly scoped
 complement to — not a replacement for — these tools. A concrete,
 reproducible cross-check of `lyapax` against `jitcode`, `jitcdde`, and
