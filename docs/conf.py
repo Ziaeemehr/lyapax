@@ -29,7 +29,7 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 html_theme = "sphinx_book_theme"
 html_static_path = ["_static"]
-html_logo = "_static/lyapax_logo.svg"
+html_logo = "_static/lyapax_logo.png"
 html_theme_options = {
     "repository_url": "https://github.com/Ziaeemehr/lyapax",
     "use_repository_button": True,

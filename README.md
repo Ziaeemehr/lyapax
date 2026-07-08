@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/_static/lyapax_logo.svg" alt="LYAPAX logo" width="520">
+  <img src="docs/_static/lyapax_logo.png" alt="LYAPAX logo" width="520">
 </p>
 
 # lyapax
