@@ -678,16 +678,17 @@ decisions into an implementation plan.
 
 ### M9.1 — Dependency and scope decision
 
-- [ ] Add `diffrax` as an optional dependency (`pyproject.toml`'s
-  `[project.optional-dependencies]`, a new `adaptive` extra — not a core
-  dependency, so `lyapax`'s fixed-step path keeps zero new required deps).
-  Pin a floor version compatible with the `jax>=0.10` floor already in use;
-  verify against the dedicated `lyapax` dev environment
-  (`/home/ziaee/envs/lyapax`, not `vbienv`) before pinning a number.
-- [ ] Confirm `diffrax`'s minimum supported JAX version doesn't force
-  bumping `lyapax`'s own `jax>=0.10` floor; record whatever version was
-  actually tested against in the dependencies comment, matching the
-  existing "Verified against jax==0.10.2" convention in `pyproject.toml`.
+- [x] Add `diffrax` as an optional dependency (`pyproject.toml`'s new
+  `adaptive` extra — not a core dependency, so `lyapax`'s fixed-step path
+  keeps zero new required deps). Installed and verified in the dedicated
+  `lyapax` dev environment (`/home/ziaee/envs/lyapax`, not `vbienv`):
+  `diffrax==0.7.2`, pulled in `equinox`, `jaxtyping`, `lineax`,
+  `optimistix`, `wadler-lindig` as transitive deps — all against the
+  already-installed `jax==0.10.2` with no version conflict.
+- [x] Confirmed `diffrax`'s floor (`jax>=0.4.38`) is well below `lyapax`'s
+  own `jax>=0.10` floor — no bump needed. Recorded in a
+  `pyproject.toml` comment next to the new `adaptive` extra, matching the
+  existing "Verified against jax==0.10.2" convention.
 - [ ] Decide the public entry point shape: reuse `ode_problem(rhs, state0,
   dt, integrator=...)` with a new `integrator` value (e.g.
   `integrator="dopri5"` or an `AdaptiveODE(solver=..., rtol=..., atol=...)`
@@ -736,12 +737,30 @@ Three structural changes are required on `lyapax`'s side of the boundary
      `diffeqsolve` itself is built on) as the atomic unit inside `lyapax`'s
      own `while_loop`, so `jax.jvp` still wraps one bounded call at a
      time, exactly like the fixed-step case.
-   - [ ] Confirm empirically (not just by reading diffrax's source) that
-     `jax.jvp` through `solver.step` produces a finite, correct tangent —
-     add a unit test isolating just this (a linear system with a known
-     tangent action, comparing `jvp`-through-`solver.step` against the
-     analytic fundamental-matrix action), *before* wiring it into the full
-     Benettin loop, so a diffrax-internals surprise is caught in isolation.
+   - [x] Confirmed empirically, and it *is* a diffrax-internals surprise
+     as anticipated: `tests/test_adaptive_diffrax.py`. Constructing a
+     solver the default way (`diffrax.Dopri5()`) and calling `jax.jvp`
+     through its `.step` raises `TypeError: can't apply forward-mode
+     autodiff (jvp) to a custom_vjp function` — `AbstractRungeKutta.step`
+     iterates its internal stages via an `equinox`-checkpointed
+     `while_loop` (`scan_kind=None`, the default, maps to `"checkpointed"`
+     internally) whose checkpointing is implemented with a `custom_vjp`
+     that only supports reverse-mode. Passing **`scan_kind="lax"`** to the
+     solver constructor switches that internal loop to a plain
+     `jax.lax.scan`, which *is* jvp-compatible: the tangent through
+     `jax.jvp(one_step, (y0,), (v,))` then matches the exact linear
+     fundamental-matrix action (`expm(A*dt) @ v`) to `~1e-10`, consistent
+     with Dopri5's own single-step truncation error at that `dt`, not a
+     coincidence or a degenerate test vector.
+     **Consequence for implementation:** every diffrax solver `lyapax`'s
+     adaptive integrator constructs internally must pass
+     `scan_kind="lax"` explicitly — relying on diffrax's default silently
+     breaks tangent propagation with an opaque `TypeError` deep inside
+     `solver.step`, not a clear error at the `lyapax` API boundary. Worth
+     a validation check (raise a clear `lyapax`-level error if a caller
+     somehow supplies a solver without `scan_kind="lax"`) when M9.2's
+     wrapper is implemented, rather than letting diffrax's `TypeError`
+     surface raw.
 3. **`stop_gradient` on the step-size decision.** Gradient must flow
    through the accepted state update but not through the controller's
    accept/reject/step-size choice (a discrete, non-differentiable
@@ -824,6 +843,9 @@ not a user-facing API change.
   `plot_13_dde_history_interpolation.py`) — a new capability needs a
   runnable `examples/` demo, not just unit tests; self-contained, with no
   `notes/`/milestone-number references inside the example file itself.
+- [x] Isolated diffrax-primitive check — `tests/test_adaptive_diffrax.py`
+  (M9.2.2's jvp-through-`solver.step` test, done ahead of the rest of this
+  list since it was the highest-risk unknown; see its finding above).
 - [ ] New regression tests: `tests/test_adaptive_ode.py` — convergence,
   cross-check, and differentiability tests above, plus a test that
   `dde_problem`/`network_dde_problem` reject an adaptive `integrator`

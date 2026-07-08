@@ -46,6 +46,13 @@ dev = [
 examples = [
     "matplotlib>=3.7",
 ]
+# Adaptive-step ODE integration (M9, notes/milestones.md) -- ODE-only,
+# diffrax has no DDE support (patrick-kidger/diffrax#406). Verified against
+# diffrax==0.7.2 in the lyapax dev env (jax==0.10.2 already installed
+# satisfies diffrax's jax>=0.4.38 floor).
+adaptive = [
+    "diffrax>=0.7.2",
+]
 docs = [
     "sphinx>=7",
     "sphinx-gallery>=0.15",
