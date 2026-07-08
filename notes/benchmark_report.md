@@ -188,11 +188,11 @@ outside the markers instead.
 <!-- AUTO:ode-accuracy -->
 | System | lyapax | lyapax (RK6) | jitcode | ChaosTools.jl | Reference | Notes |
 |---|---|---|---|---|---|---|
-| Linear ODE (Tier 0.1) | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | exact `[-1, -2, -5]` | max abs diff from reference -- lyapax: `9.45e-07`, lyapax (RK6): `9.45e-07`, jitcode: `3.46e-05`, ChaosTools.jl: `8.76e-11` |
-| Lorenz λ1 (Tier 1.1/2) | `0.90172` | `0.90878` | `0.90587` | `0.89674` | published `≈0.9056` | max abs diff from reference -- lyapax: `3.88e-03`, lyapax (RK6): `3.18e-03`, jitcode: `2.67e-04`, ChaosTools.jl: `8.86e-03` |
-| Lorenz sum(λ) | `-13.6666` | `-13.6667` | `-13.6667` | `-13.5228` | exact `-13.6667` (`-(σ+1+β)`) | max abs diff from reference -- lyapax: `1.02e-04`, lyapax (RK6): `1.79e-09`, jitcode: `1.55e-06`, ChaosTools.jl: `1.44e-01` |
-| Rössler λ1 (Tier 1.2/2) | `0.07080` | `0.08017` | `0.07317` | `0.06205` | qualitative `≈0.07` | max abs diff from reference -- lyapax: `7.98e-04`, lyapax (RK6): `1.02e-02`, jitcode: `3.17e-03`, ChaosTools.jl: `7.95e-03` |
-| 4-node linear network (Tier 3.1) | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | exact `[-1, -2, -2, -3]` | max abs diff from reference -- lyapax: `3.53e-06`, lyapax (RK6): `3.53e-06`, jitcode: `2.86e-06`, ChaosTools.jl: `2.23e-06` |
+| Linear ODE (Tier 0.1) | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | `[-1.0000, -2.0000, -5.0000]` | exact `[-1, -2, -5]` | max abs diff from reference -- lyapax: `9.45e-07`, lyapax (RK6): `9.45e-07`, jitcode: `1.16e-05`, ChaosTools.jl: `8.76e-11` |
+| Lorenz λ1 (Tier 1.1/2) | `0.90172` | `0.90878` | `0.90105` | `0.89674` | published `≈0.9056` | max abs diff from reference -- lyapax: `3.88e-03`, lyapax (RK6): `3.18e-03`, jitcode: `4.55e-03`, ChaosTools.jl: `8.86e-03` |
+| Lorenz sum(λ) | `-13.6666` | `-13.6667` | `-13.6667` | `-13.5228` | exact `-13.6667` (`-(σ+1+β)`) | max abs diff from reference -- lyapax: `1.02e-04`, lyapax (RK6): `1.79e-09`, jitcode: `1.56e-06`, ChaosTools.jl: `1.44e-01` |
+| Rössler λ1 (Tier 1.2/2) | `0.07080` | `0.08017` | `0.07895` | `0.06205` | qualitative `≈0.07` | max abs diff from reference -- lyapax: `7.98e-04`, lyapax (RK6): `1.02e-02`, jitcode: `8.95e-03`, ChaosTools.jl: `7.95e-03` |
+| 4-node linear network (Tier 3.1) | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | `[-1.0014, -1.9986, -2.0000, -3.0000]` | `[-1.0000, -2.0000, -2.0000, -3.0000]` | exact `[-1, -2, -2, -3]` | max abs diff from reference -- lyapax: `3.53e-06`, lyapax (RK6): `3.53e-06`, jitcode: `1.36e-03`, ChaosTools.jl: `2.23e-06` |
 <!-- END AUTO:ode-accuracy -->
 
 ### Map systems (lyapax vs. ChaosTools.jl only)
@@ -210,9 +210,9 @@ outside the markers instead.
 <!-- AUTO:dde-accuracy -->
 | System | lyapax | lyapax (RK6) | jitcdde | Reference | Notes |
 |---|---|---|---|---|---|
-| Linear scalar DDE (Tier 4.2) | `-0.60050` | `-0.60050` | `-0.59831` | Lambert W root `-0.598304` | max abs diff from reference -- lyapax: `2.19e-03`, lyapax (RK6): `2.19e-03`, jitcdde: `8.85e-07` |
-| Mackey-Glass λ1 (Tier 4.1) | `0.00796` | `0.00727` | `0.00520` | qualitative `1e-03`-`1e-02` | lyapax inside band; lyapax (RK6) inside band; jitcdde inside band |
-| Mackey-Glass KY dimension | `2.206` | `2.191` | `2.133` | `2.0`-`3.0` | lyapax inside band; lyapax (RK6) inside band; jitcdde inside band |
+| Linear scalar DDE (Tier 4.2) | `-0.60050` | `-0.60050` | `-0.59830` | Lambert W root `-0.598304` | max abs diff from reference -- lyapax: `2.19e-03`, lyapax (RK6): `2.19e-03`, jitcdde: `6.51e-07` |
+| Mackey-Glass λ1 (Tier 4.1) | `0.00796` | `0.00727` | `0.00502` | qualitative `1e-03`-`1e-02` | lyapax inside band; lyapax (RK6) inside band; jitcdde inside band |
+| Mackey-Glass KY dimension | `2.206` | `2.191` | `2.129` | `2.0`-`3.0` | lyapax inside band; lyapax (RK6) inside band; jitcdde inside band |
 | 2-node delayed linear network (Tier 4.3) | not yet run | not yet run | not yet run | Lambert W root (2x2) | deferred, see notes/benchmark_report.md Open TODOs |
 <!-- END AUTO:dde-accuracy -->
 
@@ -245,12 +245,12 @@ DDE-only, so a given row never has both):
 <!-- AUTO:performance -->
 | System | lyapax (warm) | lyapax (RK6) (warm) | lyapax (GPU) (warm) | lyapax (RK6, GPU) (warm) | jitcode (warm) | jitcdde (warm) | ChaosTools.jl (warm) | lyapax (1st call) | lyapax (RK6) (1st call) | lyapax (GPU) (1st call) | lyapax (RK6, GPU) (1st call) | jitcode (1st call) | jitcdde (1st call) | ChaosTools.jl (1st call) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Linear ODE (Tier 0.1) | `0.265s` | `0.409s` | `0.904s` | `1.444s` | `0.190s` | -- | `0.003s` | `1.40s` | `0.45s` | `2.57s` | `1.56s` | `0.97s` | -- | `4.87s` |
-| Lorenz | `0.372s` | `0.598s` | `1.757s` | `3.400s` | `0.672s` | -- | `0.010s` | `1.46s` | `0.63s` | `3.47s` | `3.36s` | `1.55s` | -- | `4.91s` |
-| Rössler | `0.428s` | `0.692s` | `4.634s` | `9.175s` | `2.025s` | -- | `0.030s` | `1.53s` | `0.71s` | `6.29s` | `9.19s` | `2.87s` | -- | `5.06s` |
-| 4-node network (Tier 3.1) | `0.405s` | `0.674s` | `1.146s` | `2.239s` | `0.203s` | -- | `0.004s` | `1.50s` | `0.70s` | `2.90s` | `2.40s` | `1.16s` | -- | `5.48s` |
-| Linear scalar DDE (Tier 4.2) | `0.304s` | `0.414s` | `0.682s` | `0.852s` | -- | `0.017s` | -- | `1.49s` | `0.41s` | `2.47s` | `0.82s` | -- | `1.06s` | -- |
-| Mackey-Glass | `0.585s` | `0.880s` | `1.411s` | `1.988s` | -- | `9.766s` | -- | `2.08s` | `0.87s` | `3.41s` | `2.02s` | -- | `15.98s` | -- |
+| Linear ODE (Tier 0.1) | `0.259s` | `0.457s` | `0.919s` | `1.460s` | `0.190s` | -- | `0.003s` | `1.46s` | `0.48s` | `2.66s` | `1.54s` | `0.88s` | -- | `5.05s` |
+| Lorenz | `0.372s` | `0.693s` | `1.737s` | `3.487s` | `0.589s` | -- | `0.010s` | `1.58s` | `0.66s` | `3.41s` | `3.43s` | `1.45s` | -- | `5.12s` |
+| Rössler | `0.420s` | `0.681s` | `4.827s` | `9.486s` | `2.002s` | -- | `0.029s` | `1.62s` | `0.70s` | `6.33s` | `9.36s` | `2.79s` | -- | `5.12s` |
+| 4-node network (Tier 3.1) | `0.403s` | `0.691s` | `1.175s` | `2.290s` | `0.188s` | -- | `0.004s` | `1.60s` | `0.68s` | `2.94s` | `2.36s` | `1.10s` | -- | `5.51s` |
+| Linear scalar DDE (Tier 4.2) | `0.322s` | `0.424s` | `0.733s` | `0.853s` | -- | `0.020s` | -- | `1.58s` | `0.43s` | `2.37s` | `0.90s` | -- | `1.01s` | -- |
+| Mackey-Glass | `0.563s` | `0.865s` | `1.442s` | `1.964s` | -- | `10.149s` | -- | `2.06s` | `0.87s` | `3.47s` | `2.01s` | -- | `16.05s` | -- |
 <!-- END AUTO:performance -->
 
 Not in the table above (no natural equivalent in the other tools without

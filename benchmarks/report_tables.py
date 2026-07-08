@@ -1,19 +1,18 @@
-"""Regenerate notes/benchmark_report.md's Results tables from
+"""Regenerate the Results tables in docs/background/benchmarks.md from
 benchmarks/results.json, so the doc never needs a manual copy-paste edit
 after a re-run of collect_results.py.
 
 Usage:
     python benchmarks/report_tables.py            # print all tables to stdout
     python benchmarks/report_tables.py --write     # also splice them into
-                                                    # notes/benchmark_report.md,
-                                                    # replacing the content
-                                                    # between each pair of
+                                                    # the doc, replacing the
+                                                    # content between each
+                                                    # pair of
                                                     # <!-- AUTO:... --> markers
 
 Reference values (exact eigenvalues, Lambert W roots, published/qualitative
 bands) are derived here from the same parameters the benchmark scripts use
-(benchmarks/{lyapax,jitcode,jitcdde,chaostools}/*), not re-typed from the
-doc -- see notes/validation_systems.md for where each one comes from.
+(benchmarks/{lyapax,jitcode,jitcdde,chaostools}/*).
 """
 import argparse
 import json
@@ -25,7 +24,9 @@ from scipy.special import lambertw
 
 HERE = Path(__file__).parent
 RESULTS_PATH = HERE / "results.json"
-REPORT_PATH = HERE.parent / "notes" / "benchmark_report.md"
+REPORT_PATHS = [
+    HERE.parent / "docs" / "background" / "benchmarks.md",
+]
 
 TOOL_LABEL = {
     "lyapax": "lyapax",
@@ -230,7 +231,7 @@ def build_dde_table(by_system: dict) -> str:
 
     rows.append(["2-node delayed linear network (Tier 4.3)",
                  *(["not yet run"] * len(tools)), "Lambert W root (2x2)",
-                 "deferred, see notes/benchmark_report.md Open TODOs"])
+                 "deferred -- not yet run against jitcdde"])
 
     return _md_table(headers, rows)
 
@@ -272,13 +273,13 @@ MARKERS = {
 }
 
 
-def splice(report_text: str, by_system: dict) -> str:
+def splice(report_text: str, by_system: dict, report_path: Path) -> str:
     for name, builder in MARKERS.items():
         begin, end = f"<!-- AUTO:{name} -->", f"<!-- END AUTO:{name} -->"
         pattern = re.compile(re.escape(begin) + r".*?" + re.escape(end), re.DOTALL)
         if not pattern.search(report_text):
             raise SystemExit(
-                f"Marker pair {begin} ... {end} not found in {REPORT_PATH} -- "
+                f"Marker pair {begin} ... {end} not found in {report_path} -- "
                 "add it around the table to auto-generate before running --write."
             )
         replacement = f"{begin}\n{builder(by_system)}\n{end}"
@@ -289,7 +290,7 @@ def splice(report_text: str, by_system: dict) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", action="store_true",
-                         help="splice tables into notes/benchmark_report.md")
+                         help="splice tables into docs/background/benchmarks.md")
     args = parser.parse_args()
 
     by_system = load_results()
@@ -304,9 +305,10 @@ def main() -> None:
     print(build_performance_table(by_system))
 
     if args.write:
-        text = REPORT_PATH.read_text()
-        REPORT_PATH.write_text(splice(text, by_system))
-        print(f"\nWrote tables into {REPORT_PATH}", flush=True)
+        for report_path in REPORT_PATHS:
+            text = report_path.read_text()
+            report_path.write_text(splice(text, by_system, report_path))
+            print(f"\nWrote tables into {report_path}", flush=True)
 
 
 if __name__ == "__main__":

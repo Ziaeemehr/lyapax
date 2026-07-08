@@ -35,5 +35,6 @@ Requires ``jax>=0.10``, Python ``>=3.11``.
    background/validation
    background/capabilities
    background/jax_performance
+   background/benchmarks
    auto_examples/index
    api
