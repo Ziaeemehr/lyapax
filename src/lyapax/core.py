@@ -18,6 +18,32 @@ matters whenever ``k < d`` (the partial-spectrum case ``jacfwd`` can't
 exploit, since it always computes all ``d`` columns regardless of how many
 are actually tracked). See :ref:`matrix-free-tangent` for the design
 rationale.
+
+**Differentiating an exponent w.r.t. a system parameter** (``notes/
+open_issues.md`` item 6.1): ``lyapunov_spectrum`` is built entirely from
+``jax.lax.scan`` (static trip count) and ``jnp.linalg.qr``, both of which
+support reverse-mode AD, so ``jax.grad``/``jax.jacrev`` do not raise here
+(unlike ``lyapax.adaptive``'s diffrax-backed integrator, whose internal
+dynamic-trip-count ``while_loop`` blocks reverse-mode outright). But *not
+raising* is not the same as *useful*: for a genuinely chaotic trajectory,
+``step_fn`` closes over the parameter being differentiated, so
+``jax.grad``/``jax.jacfwd`` differentiate through the entire unrolled state
+trajectory, and the result inherits that trajectory's own exponential
+sensitivity to perturbation — the returned "gradient" grows roughly like
+``exp(lambda_max * horizon)`` and is numerically meaningless well before it
+overflows (confirmed empirically: unusable already within a few hundred
+steps for the Lorenz system, worse for longer runs; see
+``tests/test_differentiability.py``). This is a known phenomenon in
+chaotic sensitivity analysis, not a lyapax-specific bug — naive
+trajectory-unrolling gradients of long-time-averaged chaotic quantities are
+fundamentally unreliable, which is why shadowing-based methods (e.g.
+least-squares shadowing) exist in that literature. **Practical guidance:**
+``jax.grad``/``jax.jacfwd`` through this engine are reliable for
+non-chaotic or short-horizon systems (e.g. tuning a parameter that keeps
+the trajectory on a stable fixed point/limit cycle, or a genuinely short
+run) — do not trust a gradient computed through a long chaotic trajectory
+without independently checking it (e.g. against a finite-difference
+estimate) first.
 """
 from __future__ import annotations
 

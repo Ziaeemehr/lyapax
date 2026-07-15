@@ -285,18 +285,38 @@ toward a Julia clone.
 
 ### Fits the existing engine -- worth prioritizing
 
-1. **Differentiate through the Lyapunov exponent itself.** Since
-   `lyapunov_spectrum` is an all-JAX QR/Benettin `lax.scan`,
-   `jax.grad`/`jax.jacrev` of an exponent w.r.t. a system parameter is
-   plausibly already mechanically possible, or close to it. This is the
-   single capability every comparable tool (ChaosTools.jl, jitcode,
-   nolds) lacks. Concretely: (a) audit/test that `grad(lambda_max)`
-   w.r.t. a `rhs` parameter produces a sane, finite gradient end to end
-   (QR has non-smooth points -- ties/sign flips in `Q` -- worth
-   understanding where those bite); (b) if it works, document and
-   demo it as a first-class feature, not a footnote. Likely the highest-
-   leverage single addition -- it's the thing no one else has, not one
-   more thing everyone else already has.
+1. **Differentiate through the Lyapunov exponent itself -- audited
+   2026-07-15, works with a real caveat.** `lyapunov_spectrum` is built
+   from `jax.lax.scan` (static trip count) + `jnp.linalg.qr`, both
+   reverse-mode-compatible, so `jax.grad`/`jax.jacrev` do not raise here
+   (unlike `lyapax.adaptive`'s diffrax integrator, item 4). Confirmed on a
+   non-chaotic linear system: `jax.grad`, `jax.jacfwd`, and a central
+   finite-difference reference all agree to the analytic answer
+   (`d(lambda_max)/d(gamma) == 1` exactly) to `<1e-6`. But on a genuinely
+   chaotic system (Lorenz), the same call returns a large, finite number
+   that is *not* the useful sensitivity -- `step_fn` closes over the
+   differentiated parameter, so autodiff walks through the entire unrolled
+   chaotic trajectory and the "gradient" inherits its exponential
+   sensitivity to perturbation, empirically scaling like
+   `exp(lambda_max * horizon)` (observed: already `~1e2`-`1e4` within a
+   few hundred steps, `>1e8` by a few thousand -- see
+   `tests/test_differentiability.py`). Reverse- and forward-mode agree
+   with each other even in the diverging case, confirming this is the
+   real value of this particular (naive, trajectory-unrolling) estimator's
+   gradient, not an AD-mode-specific bug. This matches a known
+   chaotic-sensitivity-analysis result (why shadowing-based methods, e.g.
+   least-squares shadowing, exist in that literature) rather than being a
+   lyapax defect. **Net: shipped as a documented, tested capability with a
+   scope limit** -- reliable for non-chaotic/short-horizon systems (e.g.
+   gradient-based tuning of a parameter toward a target exponent while
+   staying off an attractor), not for gradients through long chaotic
+   trajectories without independent verification. Documented in
+   `lyapax.core`'s module docstring and
+   `docs/background/capabilities.md`; demoed in
+   `examples/18_differentiate_lyapunov_exponent.py`. Shadowing-based
+   methods for the genuinely-chaotic case are a possible future direction,
+   not attempted here -- substantial additional machinery (not a
+   `lyapunov_spectrum`-level change) for a need that hasn't arisen yet.
 2. **Kaplan-Yorke (Lyapunov) dimension.** Pure post-processing of an
    existing `LyapunovResult.exponents` (find where cumulative sum
    crosses zero, interpolate). No new machinery, cheap, standard

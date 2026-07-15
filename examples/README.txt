@@ -45,7 +45,13 @@ run-inspect-resume loop for a DDE (``lyapax.dde.lyapunov_spectrum_dde(...,
 resume=...)`` / ``lyapax.dde.DDECheckpoint``) on the Mackey-Glass chaotic
 benchmark, showing that a DDE checkpoint must additionally carry the delay
 ring buffer's state (not just trajectory state and tangent basis) for a
-resumed run to continue correctly.
+resumed run to continue correctly -- and differentiating a Lyapunov
+exponent w.r.t. a system parameter with ``jax.grad``/``jax.jacfwd``,
+demonstrating gradient-based tuning of a parameter toward a target
+exponent on a non-chaotic system, then measuring how the same gradient
+becomes numerically meaningless (grows by many orders of magnitude with
+trajectory length rather than converging) once the underlying system is
+genuinely chaotic.
 
 New capability -> new demo: as engine features land (a new coupling kind, a
 new delay structure, a performance change, ...), add a runnable example

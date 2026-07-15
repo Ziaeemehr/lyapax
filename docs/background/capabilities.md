@@ -29,6 +29,11 @@ quickly whether it fits your problem.
   see the gaps below.
 - **Batched parameter / initial-condition sweeps** via `jax.vmap`
   (`sweep_lyapunov_spectrum`): a whole parameter grid as one XLA call.
+- **Differentiating an exponent w.r.t. a system parameter**
+  (`jax.grad`/`jax.jacfwd(lyapunov_spectrum(...).exponents[i])`) — reliable
+  for non-chaotic or short-horizon systems (e.g. gradient-based tuning of
+  a parameter toward a target exponent); see the caveat below for chaotic
+  trajectories.
 - **Transparent GPU execution** — JAX picks the backend; no code
   changes. Whether the GPU is faster depends on problem size.
 - **A validation suite anchored to independent sources** — exact
@@ -76,3 +81,13 @@ quickly whether it fits your problem.
   string right-hand sides are code-generated without sanitization —
   fine for specs you write yourself, **not safe** for specs built from
   untrusted input.
+- **Gradients through a *chaotic* trajectory are numerically useless,
+  even though they don't raise an error.** `jax.grad`/`jax.jacfwd` of an
+  exponent w.r.t. a parameter differentiate through the whole unrolled
+  state trajectory, so on a chaotic system the result inherits that
+  trajectory's own exponential sensitivity — it grows roughly like
+  `exp(lambda_max * horizon)` and is unreliable well before it overflows
+  (a known chaotic-sensitivity-analysis phenomenon, not a lyapax bug —
+  see `lyapax.core`'s module docstring). Safe for non-chaotic/short-
+  horizon systems; always sanity-check a chaotic-system gradient against
+  finite differences before trusting it.
