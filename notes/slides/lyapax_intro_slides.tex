@@ -253,7 +253,7 @@ These numbers are a documentation snapshot, not a universal performance guarante
 \featurebox{Networks}{Coupled oscillator and dense network systems.}
 
 \vspace{0.22cm}
-\featurebox{Delay systems}{Fixed-delay DDEs with reusable Lyapunov machinery.}
+\featurebox{Delay systems}{Fixed-delay DDEs retain only the required history in a memory-saving ring buffer.}
 \end{column}
 \begin{column}{0.49\linewidth}
 \featurebox{Large systems}{Partial spectra of high-dimensional states.}
@@ -273,7 +273,7 @@ Not a general-purpose differential-equation solver.}
 
 \vspace{0.18cm}
 \whitebox{\textbf{ODE integration}\par
-No implicit stiff ODE solvers in the core package. Adaptive ODE integration is available through Diffrax for tolerance control, not speed.}
+No implicit stiff ODE solvers in the core package. Adaptive ODE integration (via Diffrax) is available for single ODEs only, not networks or DDEs, for tolerance control, not speed.}
 
 \vspace{0.18cm}
 \whitebox{\textbf{Delay and gradients}\par
