@@ -82,9 +82,13 @@ differentiating through an augmented `(state, ring_buffer)` carry.
   default, direct `rk4_step`/`euler_step` step functions, or Euler/Heun/RK6
   via `lyapax.simulator`), or an adaptive-step *explicit* one via the
   optional `adaptive` extra (`lyapax.adaptive.diffrax_adaptive_step`,
-  backed by diffrax; ODE-only). Exponents are for the numerical time-`dt`
-  map (or accepted-step sequence, for the adaptive integrator), not an
-  exact flow — check `dt`/tolerance convergence for anything you report.
+  backed by diffrax; `ode_problem` only — not `network_problem` or DDEs).
+  Exponents are for the numerical time-`dt` map (or accepted-step sequence,
+  for the adaptive integrator), not an exact flow — check `dt`/tolerance
+  convergence for anything you report. The adaptive integrator is for
+  tolerance-driven accuracy control, not speed — measured 2-4x slower than
+  `rk4`/`rk6` at matched accuracy, not faster; see
+  `notes/adaptive_speed_investigation.md`.
 - **DDE delays must be known and fixed**, resolved one of two ways. By
   default (grid-snapped), a physical delay `tau` is rounded to the
   nearest multiple of `dt` (`lyapax.dde.resolve_tau_steps`); use

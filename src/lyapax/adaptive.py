@@ -9,6 +9,29 @@ Not imported by ``lyapax``'s top-level ``__init__``, since ``diffrax`` is an
 optional dependency (the ``adaptive`` extra) -- import this module directly:
 ``from lyapax.adaptive import diffrax_adaptive_step``.
 
+**This is not a speed optimization -- measured slower, not faster, than
+fixed-step integration.** At matched accuracy (not matched ``dt``/``rtol``,
+which isn't a fair comparison), this integrator was 2-4x slower than
+``rk4_step``/``rk6_step`` on Lorenz, and up to ~4.5x slower on GPU for that
+same small system, across every system tested including large (d=1500-3000)
+ones -- the gap narrows at scale but a fixed-step win was never overturned.
+Root cause: the internal accept/reject ``jax.lax.while_loop`` pays real
+per-step overhead (PID controller update, ``solver.step`` bookkeeping) that
+a fixed-step raw step doesn't. Checked and still true even on a relaxation
+oscillator (Van der Pol, mu=30, sharply time-varying stiffness unlike
+Lorenz's roughly uniform one) where fixed-step "wastes" steps during slow
+phases: RK4 at matched accuracy was still ~4x faster (0.31s vs 1.28s),
+because avoiding those extra steps only pays off if each one was expensive
+-- for a small system they're nearly free regardless of stiffness, so
+adaptive's fixed control-flow overhead per step is never amortized. A win
+would need both sharply time-varying stiffness *and* an expensive per-step
+cost (large state dimension) together; not tested, and not assumed here.
+Reach for this integrator for **tolerance-driven accuracy control** (no
+more manual ``dt``-convergence sweeps) and for its being the only
+forward-mode-differentiable adaptive option here, not for throughput. See
+``notes/adaptive_speed_investigation.md`` for the full methodology and
+numbers.
+
 Design: ``diffrax_adaptive_step(...)`` returns a builder with the same
 ``(rhs, dt) -> step_fn`` signature as the fixed-step builders in
 ``lyapax.integrators`` (``rk4_step``, etc.), so it drops straight into
