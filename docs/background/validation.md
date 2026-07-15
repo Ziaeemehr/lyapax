@@ -14,7 +14,7 @@ flow, symmetry-pinned zero exponents) are explained in
 {doc}`lyapunov_exponents`.
 
 (validation-tier-0)=
-## Tier 0 — Exact analytic values
+## Tier 0 - Exact analytic values
 
 If these fail, the bug is in the Lyapunov engine itself, not in
 integration accuracy or in chaos being hard to resolve.
@@ -23,7 +23,7 @@ integration accuracy or in chaos being hard to resolve.
 ### 0.1 Linear ODE: eigenvalues of the system matrix
 
 For $\dot{x} = Ax$ with constant $A$, the Lyapunov spectrum is exactly
-the real parts of the eigenvalues of $A$, for any initial condition — no
+the real parts of the eigenvalues of $A$, for any initial condition - no
 transient, no chaos. The tests use matrices with distinct real
 eigenvalues (e.g. $A = \operatorname{diag}(-1, -2, -5)$, spectrum
 exactly $(-1, -2, -5)$) and a damped 2-D rotation with a
@@ -51,14 +51,14 @@ runs match to 4–5 significant digits. Demonstrated in
 
 For the Hénon map [[2]](#references) at the classical $a = 1.4$,
 $b = 0.3$, the Jacobian determinant is constant, $\det J = -b$, so
-$\lambda_1 + \lambda_2 = \ln|b| = \ln 0.3 \approx -1.20397$ — an
+$\lambda_1 + \lambda_2 = \ln|b| = \ln 0.3 \approx -1.20397$ - an
 algebraic identity, checkable to near machine precision. The individual
 values are additionally compared to widely cited figures
 ($\lambda_1 \approx 0.419$, $\lambda_2 \approx -1.623$
 [[1]](#references)) within ~1%.
 
 (validation-tier-1)=
-## Tier 1 — Structural invariants of continuous flows
+## Tier 1 - Structural invariants of continuous flows
 
 These follow from the divergence of the vector field and require no
 trusted external exponent value.
@@ -73,7 +73,7 @@ trusted external exponent value.
   the time average $\langle x \rangle_t$ computed from the same run.
 
 (validation-tier-2)=
-## Tier 2 — Published literature values
+## Tier 2 - Published literature values
 
 Used as a tolerance-band check (published values vary in the 3rd–4th
 significant digit across sources, depending on integrator, `dt`, and
@@ -83,7 +83,7 @@ averaging horizon):
   [[1]](#references), [[3]](#references); $\lambda_2 \approx 0$ is the
   flow-direction zero expected structurally for any autonomous flow.
 - **Rössler**: $\lambda_1 \approx 0.07$, with reported values in the
-  0.06–0.09 range across sources [[1]](#references) — used as a looser
+  0.06–0.09 range across sources [[1]](#references) - used as a looser
   order-of-magnitude check, with the Tier 1 divergence identity as the
   tighter one.
 
@@ -91,19 +91,19 @@ Both flows are demonstrated in
 {ref}`sphx_glr_auto_examples_03_chaotic_flows.py`.
 
 (validation-tier-3)=
-## Tier 3 — Coupled-network wiring
+## Tier 3 - Coupled-network wiring
 
 A linear per-node model with linear coupling makes the whole network a
 constant-matrix linear system, $\dot{x} = (\gamma I + G W)x$, so as in
 Tier 0.1 the full spectrum equals the real parts of
-$\operatorname{eig}(\gamma I + G W)$ — computable independently with
+$\operatorname{eig}(\gamma I + G W)$ - computable independently with
 `numpy.linalg.eigvals`. This isolates coupling-path bugs ("coupling
 applied to the wrong axis", "Jacobian missing the off-diagonal coupling
 block") from anything related to chaos. Demonstrated in
 {ref}`sphx_glr_auto_examples_04_linear_network.py`.
 
 (validation-tier-4)=
-## Tier 4 — Delay systems
+## Tier 4 - Delay systems
 
 - **Linear scalar DDE**, $\dot{x}(t) = -a\,x(t - \tau)$: the dominant
   root of the characteristic equation $\lambda = -a e^{-\lambda\tau}$
@@ -113,7 +113,7 @@ block") from anything related to chaos. Demonstrated in
 - **Mackey–Glass** [[5]](#references) at the classic chaotic parameter
   set ($\beta = 0.2$, $\gamma = 0.1$, $n = 10$, $\tau = 17$): the system
   Farmer used to introduce the discretized-history method for DDE
-  Lyapunov spectra [[6]](#references) — exactly the method lyapax
+  Lyapunov spectra [[6]](#references) - exactly the method lyapax
   implements. Checked qualitatively: a small positive leading exponent,
   a near-zero second exponent, and a negative tail, consistent with
   literature reports.
@@ -125,7 +125,7 @@ block") from anything related to chaos. Demonstrated in
   (`LyapunovResult.history`) alongside the final number, so a near-miss
   is diagnosable.
 - ODE tests are run at two different `dt` values to confirm the
-  estimate is `dt`-stable before comparing against literature — this
+  estimate is `dt`-stable before comparing against literature - this
   catches integration-scheme bugs a single-`dt` test would miss.
 - DDE tests are likewise run at two `dt` values with the physical
   $\tau$ held fixed, specifically to characterize the grid-snapping

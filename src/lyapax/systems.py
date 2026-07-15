@@ -1,7 +1,7 @@
 """Benchmark systems for validating the Lyapunov engine.
 
 Plain flat-vector JAX functions, deliberately independent of the vendored
-ModelSpec/coupling machinery in ``lyapax.simulator`` — these are single-node,
+ModelSpec/coupling machinery in ``lyapax.simulator`` - these are single-node,
 uncoupled textbook systems, so routing them through the string-expression
 codegen built for networked models would only add indirection. Each entry
 here corresponds to a tier of the validation suite; see
@@ -28,7 +28,7 @@ Step = Callable[[jnp.ndarray], jnp.ndarray]
 
 
 # ---------------------------------------------------------------------------
-# Tier 0 — exact analytic references
+# Tier 0 - exact analytic references
 # ---------------------------------------------------------------------------
 
 def linear_system(A: jnp.ndarray) -> RHS:
@@ -63,7 +63,7 @@ def henon_map(a: float = 1.4, b: float = 0.3) -> Step:
 
 
 # ---------------------------------------------------------------------------
-# Tier 1/2 — chaotic flows (structural invariants + published values)
+# Tier 1/2 - chaotic flows (structural invariants + published values)
 # ---------------------------------------------------------------------------
 
 def lorenz(sigma: float = 10.0, rho: float = 28.0, beta: float = 8.0 / 3.0) -> RHS:
@@ -91,7 +91,7 @@ def rossler(a: float = 0.2, b: float = 0.2, c: float = 5.7) -> RHS:
 
 
 # ---------------------------------------------------------------------------
-# Tier 4 — DDE benchmarks: rhs_delayed(state_now, state_delayed) -> dstate,
+# Tier 4 - DDE benchmarks: rhs_delayed(state_now, state_delayed) -> dstate,
 # both shape (1,). Pair with lyapax.dde.make_scalar_delayed_step_fn.
 # ---------------------------------------------------------------------------
 

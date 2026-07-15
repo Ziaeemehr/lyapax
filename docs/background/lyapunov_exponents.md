@@ -47,7 +47,7 @@ In practice nobody evaluates that limit or that SVD directly: a single
 generic perturbation collapses onto the fastest-growing direction almost
 immediately, and everything overflows or underflows in finite precision.
 Every practical algorithm therefore periodically re-orthonormalizes a
-whole basis of perturbation vectors instead of tracking one — that is
+whole basis of perturbation vectors instead of tracking one - that is
 the Benettin/QR method described below.
 
 ```{figure} ../_static/lyapunov_perturbation_growth.svg
@@ -67,7 +67,7 @@ A few structural facts make Lyapunov spectra checkable, independent of
 whether the underlying system is chaotic:
 
 - **Sign meaning.** At least one positive exponent is the standard
-  operational definition of chaos — sensitive dependence on initial
+  operational definition of chaos - sensitive dependence on initial
   conditions [[2]](#references). An all-negative spectrum means the
   trajectory converges to a fixed point or a stable limit cycle. A zero
   exponent along the flow direction is generic for any bounded
@@ -78,16 +78,16 @@ whether the underlying system is chaotic:
   $\sum_i \lambda_i = \lim_{T\to\infty} \frac{1}{T} \int_0^T
   \operatorname{tr} J(x(t)) \, dt$,
   the time-averaged divergence of the flow. For systems where
-  $\operatorname{tr} J$ is constant — the Lorenz system is the classic
-  case — the sum is known exactly with no simulation at all; for others
+  $\operatorname{tr} J$ is constant - the Lorenz system is the classic
+  case - the sum is known exactly with no simulation at all; for others
   (e.g. Rössler) it reduces to a time average of one state variable,
   checkable from an independently computed trajectory. lyapax's own test
   suite is anchored to checks of exactly this kind, plus closed-form and
   published literature values [[4]](#references), because for a generic
   chaotic system there is no ground-truth oracle to compare against.
 - **Continuous symmetry → exact zero exponent.** If the dynamics are
-  invariant under a continuous transformation — for example Kuramoto
-  phases under a global rotation $\theta_i \to \theta_i + c$ — the
+  invariant under a continuous transformation - for example Kuramoto
+  phases under a global rotation $\theta_i \to \theta_i + c$ - the
   generator of that symmetry is an exactly marginal direction: one
   exponent is pinned to $0$, never negative, regardless of parameters.
   This is a model-specific but very sharp correctness check, used
@@ -99,7 +99,7 @@ lyapax uses the standard variational (tangent-space) approach with
 periodic reorthonormalization, introduced by Benettin, Galgani,
 Giorgilli & Strelcyn [[3]](#references) and, independently, by Shimada &
 Nagashima [[5]](#references). The reorthonormalization is expressed as a
-QR decomposition, which computes the *full spectrum* — not just the
+QR decomposition, which computes the *full spectrum* - not just the
 leading exponent. Wolf et al. [[4]](#references) popularized the
 Gram–Schmidt variant of the same idea; Geist, Parlitz & Lauterborn
 [[6]](#references) compare this family of methods systematically, and
@@ -143,7 +143,7 @@ the history, as first demonstrated by Farmer for the Mackey–Glass
 equation [[10]](#references). lyapax follows the same idea: the
 Benettin/QR machinery above is applied to an augmented carry containing
 the current state plus a fixed-depth ring buffer of recent history, and
-the tangent dynamics are differentiated through both jointly — a delayed
+the tangent dynamics are differentiated through both jointly - a delayed
 sensitivity $\partial f / \partial x(t-\tau)$ is exactly as real as the
 instantaneous one, and dropping it gives wrong exponents, not just
 imprecise ones.

@@ -40,12 +40,12 @@ discrete map, pass `dt=1.0` and read the exponents as per-iterate rates.
 
 Network dynamics are specified as two functions:
 
-- `dfun(state, coupling, params) -> dstate` — the per-node dynamics;
-- `coupling(cvar_state, weights, params) -> coupling` — how each node
+- `dfun(state, coupling, params) -> dstate` - the per-node dynamics;
+- `coupling(cvar_state, weights, params) -> coupling` - how each node
   aggregates its neighbours' coupling variables.
 
 Built-in linear, sigmoidal, and Kuramoto coupling rules are provided,
-but any user-written callable with the same signature works — there is
+but any user-written callable with the same signature works - there is
 no registry or dispatch layer to extend. The front-door constructors
 `network_problem` / `network_dde_problem` just wire a `Network`
 (topology and weights), a `dfun`, and a coupling callable together.
@@ -66,7 +66,7 @@ jax.config.update("jax_enable_x64", True)
 
 lyapax warns (rather than raising) when it detects a float32 state with
 x64 disabled, since a caller computing a deliberately short, coarse
-estimate may accept the precision loss — but the float32 default is very
+estimate may accept the precision loss - but the float32 default is very
 rarely what you actually want here.
 
 (choosing-renorm-every)=
@@ -101,7 +101,7 @@ Two history-read modes exist:
 
 - **Grid-snapped (default).** The delay $\tau$ is rounded to the nearest
   whole number of `dt` steps, and every history read pulls one exact
-  stored ring-buffer sample. Simple and fully differentiable — but the
+  stored ring-buffer sample. Simple and fully differentiable - but the
   delay actually simulated ($\tau_\text{eff}$) is not exactly the
   requested $\tau$. This is an $O(dt)$ bias in *which system is being
   simulated*, not a truncation error, so it does not shrink smoothly or
@@ -109,7 +109,7 @@ Two history-read modes exist:
   material, and reports $\tau_\text{eff}$).
 - **Cubic-Hermite interpolated (`interpolate=True`).** The ring buffer
   stores (value, derivative) pairs, so any intra-step history read can
-  be reconstructed with a cubic Hermite interpolant — the same approach
+  be reconstructed with a cubic Hermite interpolant - the same approach
   established adaptive-step DDE solvers use. $\tau$ is used exactly, no
   rounding, and convergence in `dt` becomes smooth and monotone at the
   integrator's own order (up to the interpolant's ~4th-order ceiling).
@@ -121,8 +121,8 @@ Two history-read modes exist:
 
 A subtlety worth knowing about because it silently affects accuracy in
 naive implementations: a Runge–Kutta method only achieves its nominal
-order if the *complete* right-hand side — including network coupling and
-delayed-history terms — is re-evaluated fresh at each internal stage's
+order if the *complete* right-hand side - including network coupling and
+delayed-history terms - is re-evaluated fresh at each internal stage's
 own intra-step state and time. Freezing the coupling or the history read
 once per step caps convergence at first order for any coupled or
 delayed system, regardless of the base method's nominal order (RK4 and
@@ -131,7 +131,7 @@ RK6 produce identical, order-1 errors).
 lyapax therefore recomputes coupling at every stage's own intra-step
 state estimate, and (with `interpolate=True`) reconstructs the delayed
 history at each stage's own intra-step time via the Hermite interpolant.
-In grid-snapped mode the history read is still once-per-step — one more
+In grid-snapped mode the history read is still once-per-step - one more
 reason to prefer `interpolate=True` when accuracy in `dt` matters.
 
 ## Batched parameter sweeps
@@ -145,5 +145,5 @@ one Python-level engine call per grid point.
 
 Nothing in lyapax is backend-specific: JAX picks the backend, and the
 same code runs on CPU or GPU with zero changes. Whether the GPU is
-*faster* is a separate, size-dependent question — small problems lose to
+*faster* is a separate, size-dependent question - small problems lose to
 per-call overhead; see the GPU example in the gallery for measurements.

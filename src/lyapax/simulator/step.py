@@ -1,7 +1,7 @@
 """dfun codegen + the ring-buffer step(carry, _) factory.
 
 Adapted from ``vbi/simulator/backend/jax_/codegen.py`` and
-``vbi/simulator/backend/jax_/simulator.py`` — see NOTICE.md in this directory
+``vbi/simulator/backend/jax_/simulator.py`` - see NOTICE.md in this directory
 for provenance and what was dropped (stochastic noise, state clipping,
 sigmoidal/kuramoto coupling, monitors/stimuli).
 
@@ -9,8 +9,8 @@ This is the piece that unifies ODE and DDE: ``has_delays=False`` reads
 coupling from the instantaneous state; ``has_delays=True`` reads it from a
 ring buffer of past coupling-variable states via a flat-index gather. Both
 paths produce the same ``step(carry, _) -> (new_carry, new_state)`` shape
-consumed by ``jax.lax.scan``, and — critically for the Lyapunov engines —
-both are plain, differentiable JAX functions of ``carry``.
+consumed by ``jax.lax.scan``, and - critically for the Lyapunov engines - both
+are plain, differentiable JAX functions of ``carry``.
 """
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def build_jax_dfun(spec: ModelSpec) -> Callable:
         params   : dict[str, scalar | jnp.ndarray]
 
     Compiled once via exec() on the spec's own strings, same as the vbi
-    original — nothing about the generated function blocks jax.jacfwd /
+    original - nothing about the generated function blocks jax.jacfwd /
     jax.jvp.
 
     .. warning::
@@ -43,7 +43,7 @@ def build_jax_dfun(spec: ModelSpec) -> Callable:
         ``exec()`` with **no sanitization**. This is fine for specs a
         caller writes themselves, but never build a ``ModelSpec`` from
         untrusted input (user uploads, network data, config files from
-        unknown sources) — the strings can execute arbitrary code.
+        unknown sources) - the strings can execute arbitrary code.
     """
     sv = spec.sv_names
     param_names = spec.param_names
@@ -293,7 +293,7 @@ def make_step_fn(
     jax.vmap over swept parameters and jax.jacfwd/jvp w.r.t. state both see
     it as data rather than a baked-in constant.
 
-    ``buf`` is a no-op array when ``has_delays=False`` — the ODE and DDE
+    ``buf`` is a no-op array when ``has_delays=False`` - the ODE and DDE
     cases share this exact function; only the coupling branch differs.
 
     integrator : ``"euler"``, ``"heun"``, ``"rk4"``, ``"rk6"``, or a callable

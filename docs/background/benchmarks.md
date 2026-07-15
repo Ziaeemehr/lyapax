@@ -6,7 +6,7 @@ benchmark systems `lyapax`'s own test suite is validated against (see
 {doc}`validation`).
 
 The tables on this page are generated, not hand-written, and are
-refreshed periodically rather than on every commit or doc build — treat
+refreshed periodically rather than on every commit or doc build - treat
 any specific number below as a snapshot, not a live guarantee. To
 reproduce or refresh them yourself:
 
@@ -17,7 +17,7 @@ python benchmarks/report_tables.py --write   # regenerates the tables below from
 
 `collect_results.py` needs optional dependencies this doc build doesn't
 carry (a Julia install with ChaosTools.jl, `jitcode`/`jitcdde`, and,
-for the GPU column, an actual GPU) — see
+for the GPU column, an actual GPU) - see
 `benchmarks/collect_results.py`'s module docstring for the full
 requirements. That's also why these tables are committed as a static
 snapshot (`benchmarks/results.json`) instead of being executed as part
@@ -25,15 +25,15 @@ of building this documentation.
 
 ## Comparison targets
 
-- **[jitcode](https://pypi.org/project/jitcode/)** — the established
+- **[jitcode](https://pypi.org/project/jitcode/)** - the established
   Python reference for ODE Lyapunov spectra (symbolic → compiled C).
-- **[jitcdde](https://pypi.org/project/jitcdde/)** — the DDE counterpart,
+- **[jitcdde](https://pypi.org/project/jitcdde/)** - the DDE counterpart,
   and the closest existing precedent for `lyapax`'s own delayed-system
   engine.
 - **[ChaosTools.jl](https://juliadynamics.github.io/DynamicalSystemsDocs.jl/chaostools/stable/)**
-  — the most widely used dynamical-systems toolbox in Julia; covers both
+  - the most widely used dynamical-systems toolbox in Julia; covers both
   continuous and discrete (map) systems.
-- **Published/analytic references** — exact eigenvalues, Lambert-W
+- **Published/analytic references** - exact eigenvalues, Lambert-W
   roots, or literature values, wherever a benchmark system has one.
 
 None of these share `lyapax`'s exact integration scheme or default
@@ -91,17 +91,17 @@ since it has no delay-equation support).
 
 Steady-state per-call wall-clock time (each tool's JIT/compile step has
 already run by the time these numbers are measured). The GPU columns
-re-run the same `lyapax` scripts with a CUDA backend rather than CPU —
-see `benchmarks/collect_results.py` for how that pass is skipped (with a
+re-run the same `lyapax` scripts with a CUDA backend rather than CPU - see
+`benchmarks/collect_results.py` for how that pass is skipped (with a
 warning, not a failure) when no working GPU is found.
 
 The default `ChaosTools.jl` column uses its own idiomatic choice
-(`Tsit5`, adaptive step control) — a different algorithm from `lyapax`'s
+(`Tsit5`, adaptive step control) - a different algorithm from `lyapax`'s
 fixed-step `rk4`/`rk6`, so that timing isn't a same-method comparison
 (see the "Comparison targets" fairness note above). The **`ChaosTools.jl
 (RK4)`** and **`ChaosTools.jl (Vern6)`** columns close that gap: they run
 `OrdinaryDiffEq.jl`'s `RK4()` and `Vern6()` (the exact tableau `lyapax`'s
-`rk6_step` implements — see `lyapax.integrators.rk6_combine`'s
+`rk6_step` implements - see `lyapax.integrators.rk6_combine`'s
 docstring) with `adaptive=false` at `lyapax`'s own fixed `dt`, so the two
 sides are running the literal same algorithm and step size. The gap
 that remains at that point is a genuine implementation/runtime
@@ -133,47 +133,47 @@ for most of them regardless.
 
 ## Network-size scaling
 
-Every system above is small (3–4 state dimensions) — deliberately, so
+Every system above is small (3–4 state dimensions) - deliberately, so
 each has an exact or published reference to validate against. But it
 also means none of them exercise the part of `lyapax`'s design meant for
 *bigger* problems. This section uses one further system, a dense
 (all-to-all) Kuramoto network, at increasing size `d`, tracking a fixed
-`k=5` partial spectrum — the same system as
+`k=5` partial spectrum - the same system as
 [10_matrix_free_scaling.py](../../examples/10_matrix_free_scaling.py) /
 [14_gpu_acceleration.py](../../examples/14_gpu_acceleration.py), run
 here across tools instead of just `lyapax` CPU vs. GPU. It's a
-performance-only comparison — a short, no-transient run, not validated
-against a reference spectrum the way the tables above are — so read the
+performance-only comparison - a short, no-transient run, not validated
+against a reference spectrum the way the tables above are - so read the
 timings, not the exponent values.
 
 **`lyapax`'s cost here is dominated by `k`, not `d`.** `jax.jvp` computes
 only the `k=5` tangent directions actually requested, regardless of how
 large the network is (see `lyapax.core.lyapunov_spectrum`'s docstring).
-That's why `ChaosTools.jl` and `jitcode` — both of which stop well short
-of `lyapax`'s full `d=50/200/1000/2000` sweep — aren't a same-algorithm
+That's why `ChaosTools.jl` and `jitcode` - both of which stop well short
+of `lyapax`'s full `d=50/200/1000/2000` sweep - aren't a same-algorithm
 comparison being run partway; they're at (or past) their own scaling
 limit:
 
 - **`ChaosTools.jl`** stops at `d=200` (using the fixed-step `RK4()`
   established above as the fair algorithm to compare). Its tangent
   propagation forms the **full dense `d x d` Jacobian via `ForwardDiff`
-  every step**, regardless of `k` — the opposite of `lyapax`'s
+  every step**, regardless of `k` - the opposite of `lyapax`'s
   matrix-free approach. The table below shows this cost growing far
   worse than quadratically between `d=50` and `d=200`; a direct test at
   `d=1000` was abandoned after running well past ten minutes without
   finishing a single call. This is a genuine per-call cost, not a
-  one-time compile tax — a direct comparison of that same `d=200` run's
+  one-time compile tax - a direct comparison of that same `d=200` run's
   first and warm calls came out within a few percent of each other,
   unlike a case dominated by JIT/compile overhead.
 - **`jitcode`** stops at `d=50` for a different reason: it differentiates
   the right-hand side **symbolically before compiling to C**, and that
   compile step alone took on the order of a minute for a dense `d=50`
   network (~2,450 nonzero coupling terms) in a direct test, before a
-  single integration step ran — a cost the table below doesn't show,
+  single integration step ran - a cost the table below doesn't show,
   since it (like the rest of this page) reports steady-state, post-compile
   time only. Unlike `ChaosTools.jl`'s bottleneck, this one *is*
-  front-loaded — once compiled, `jitcode`'s own steady-state call is
-  fast — but the compile cost itself scales with network density and
+  front-loaded - once compiled, `jitcode`'s own steady-state call is
+  fast - but the compile cost itself scales with network density and
   would only be worse at `d=200`+.
 
 `lyapax` pays neither cost at any of these sizes: no symbolic
@@ -190,7 +190,7 @@ run time.
 <!-- END AUTO:scaling -->
 
 The `d=1000`/`d=2000` rows are also where `lyapax`'s GPU backend earns
-its keep — unlike the small 3–4-dimensional systems above, where GPU
+its keep - unlike the small 3–4-dimensional systems above, where GPU
 lost outright to CPU (see the performance table's GPU columns), a dense
 `d=2000` network's per-step arithmetic is large enough to amortize GPU
 dispatch overhead.

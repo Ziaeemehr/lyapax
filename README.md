@@ -78,15 +78,15 @@ differentiating through an augmented `(state, ring_buffer)` carry.
 **What this does *not* do:**
 
 - **No stiff (implicit) ODE solvers.** `step_fn` is whatever integrator
-  you hand it — a fixed-step map (`ode_problem(..., integrator="rk4")` by
+  you hand it - a fixed-step map (`ode_problem(..., integrator="rk4")` by
   default, direct `rk4_step`/`euler_step` step functions, or Euler/Heun/RK6
   via `lyapax.simulator`), or an adaptive-step *explicit* one via the
   optional `adaptive` extra (`lyapax.adaptive.diffrax_adaptive_step`,
-  backed by diffrax; `ode_problem` only — not `network_problem` or DDEs).
+  backed by diffrax; `ode_problem` only - not `network_problem` or DDEs).
   Exponents are for the numerical time-`dt` map (or accepted-step sequence,
-  for the adaptive integrator), not an exact flow — check `dt`/tolerance
+  for the adaptive integrator), not an exact flow - check `dt`/tolerance
   convergence for anything you report. The adaptive integrator is for
-  tolerance-driven accuracy control, not speed — measured 2-4x slower than
+  tolerance-driven accuracy control, not speed - measured 2-4x slower than
   `rk4`/`rk6` at matched accuracy, not faster; see
   `docs/background/capabilities.md`.
 - **DDE delays must be known and fixed**, resolved one of two ways. By
@@ -95,11 +95,10 @@ differentiating through an augmented `(state, ring_buffer)` carry.
   `lyapax.dde.tau_eff` to see the delay actually used, and shrink `dt` to
   converge it toward `tau`. Passing `interpolate=True` instead
   reconstructs the delayed history with a cubic-Hermite interpolant,
-  removing that rounding on the uniform-delay path at some extra cost —
-  see `13_dde_history_interpolation.py` and
-  `docs/background/lyapax_implementation.md`.
+  removing that rounding on the uniform-delay path at some extra cost - see
+  `13_dde_history_interpolation.py` and `docs/background/lyapax_implementation.md`.
 - **`history` columns are ordered once**, by the final row. Near-
-  degenerate exponents can swap order over the run — see
+  degenerate exponents can swap order over the run - see
   `LyapunovResult.history`'s docstring.
 
 ## Examples
@@ -144,9 +143,9 @@ API reference; open `docs/_build/html/index.html` when it's done.
 
 ## Further reading
 
-- `docs/background/validation.md` — the correctness tests this package is
+- `docs/background/validation.md` - the correctness tests this package is
   held to (exact values, structural invariants, literature figures).
-- `docs/background/benchmarks.md` — comparison against `jitcode`/`jitcdde` and
+- `docs/background/benchmarks.md` - comparison against `jitcode`/`jitcdde` and
   `ChaosTools.jl`.
-- `docs/background/capabilities.md` — a candid summary of what lyapax does
+- `docs/background/capabilities.md` - a candid summary of what lyapax does
   and does not do, including measured performance characteristics.

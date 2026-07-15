@@ -1,4 +1,4 @@
-# M9 — Sphinx + Sphinx-Gallery Documentation
+# M9 - Sphinx + Sphinx-Gallery Documentation
 
 ## Status
 
@@ -18,17 +18,17 @@ up after M8's package-review follow-ups.
 `docs/` is already a working Sphinx + `sphinx-gallery` scaffold, not a
 blank slate:
 
-- `docs/conf.py` — `sphinx.ext.autodoc`, `sphinx.ext.napoleon`,
+- `docs/conf.py` - `sphinx.ext.autodoc`, `sphinx.ext.napoleon`,
   `sphinx.ext.viewcode`, `sphinx_gallery.gen_gallery`; theme is `furo`.
   `sphinx_gallery_conf` points `examples_dirs` at `../examples` and
   `gallery_dirs` at `auto_examples`, picking up every `plot_*.py`.
-- `docs/index.rst` — toctree of `auto_examples/index` + `api`.
-- `docs/api.rst` — `automodule` blocks for `core`, `dde`, `simulator.*`,
+- `docs/index.rst` - toctree of `auto_examples/index` + `api`.
+- `docs/api.rst` - `automodule` blocks for `core`, `dde`, `simulator.*`,
   `integrators`, `coupling`, `network`, `systems`, `sweep`, `utils`.
 - `pyproject.toml`'s `[project.optional-dependencies].docs` already lists
   `sphinx`, `sphinx-gallery`, `furo`.
 - A previous `sphinx-build` run left `docs/auto_examples/*` and
-  `docs/sg_execution_times.rst` checked in. **These are stale** — they
+  `docs/sg_execution_times.rst` checked in. **These are stale** - they
   were generated before the front-door API migration (`ode_problem`,
   `network_problem`, `network_dde_problem`, `Network`; see
   `notes/api_design_review.md` and the examples-migration work in this
@@ -36,7 +36,7 @@ blank slate:
   once the docstring cleanup below lands; don't hand-edit the generated
   `auto_examples/` output.
 
-So the immediate gap is not "set up Sphinx" — it's (1) narrative content
+So the immediate gap is not "set up Sphinx" - it's (1) narrative content
 (background/theory, user guide, capability/limitation pages) and (2)
 purging internal-dev-note cross-references from anything Sphinx will
 publish (docstrings, example modules), per the policy below.
@@ -46,7 +46,7 @@ publish (docstrings, example modules), per the policy below.
 **Rule going forward:** docstrings (anything `autodoc` pulls in) and
 `examples/plot_*.py` modules (anything `sphinx-gallery` renders) must
 never point at `notes/*.md`. Those files are this repo's internal
-design/review history — written for whoever is implementing the next
+design/review history - written for whoever is implementing the next
 milestone, assuming access to the git working tree, not for a reader of
 the published docs. If a docstring or example currently says "see
 `notes/foo.md`", the fix is one of:
@@ -62,14 +62,14 @@ the published docs. If a docstring or example currently says "see
 3. **Inline it, unlinked.** A short, self-contained clarification (e.g.
    "ring buffer slot `k % horizon` holds step `k`'s post-write state") can
    just stay as prose in the docstring with the `notes/...md` pointer
-   removed — no doc page needed if there's nothing more to say.
+   removed - no doc page needed if there's nothing more to say.
 
 Below is every current `notes/*.md` reference in code/examples (36
 occurrences across 15 files, as of this milestone), bucketed by which of
 the three fixes it needs. This is the checklist for the actual cleanup
 pass (not done in this note).
 
-### Bucket 1 — promote to a Background/Validation doc page
+### Bucket 1 - promote to a Background/Validation doc page
 
 | Location | Points at | Promote to |
 |---|---|---|
@@ -83,7 +83,7 @@ pass (not done in this note).
 | `src/lyapax/systems.py:7` | `validation_systems.md` tiers | Background/Validation: tier table |
 | `examples/plot_01..04` docstrings | `validation_systems.md` Tier 0.1/0.2-0.3/1-2/3.1 | link each demo at the matching row of the same tier table |
 
-### Bucket 2 — drop (pure development history, no doc replacement)
+### Bucket 2 - drop (pure development history, no doc replacement)
 
 | Location | Points at |
 |---|---|
@@ -95,9 +95,9 @@ pass (not done in this note).
 | `src/lyapax/sweep.py:5` | `milestones.md` M0 note |
 | `src/lyapax/simulator/coupling.py:7` | `milestones.md` |
 | `src/lyapax/simulator/step.py:318` | `milestones.md` M4 |
-| `examples/plot_09_kuramoto_delayed_network.py:43` | `api_design_review.md` (now redundant — the front-door functions' own docstrings explain the "why") |
+| `examples/plot_09_kuramoto_delayed_network.py:43` | `api_design_review.md` (now redundant - the front-door functions' own docstrings explain the "why") |
 
-### Bucket 3 — inline, unlinked (internal detail, keep the one sentence, drop the pointer)
+### Bucket 3 - inline, unlinked (internal detail, keep the one sentence, drop the pointer)
 
 | Location | Points at |
 |---|---|
@@ -110,7 +110,7 @@ reference.)
 
 ## Background: how Lyapunov exponents are computed, and what lyapax does
 
-This section is the actual "useful introduction" — write-once source
+This section is the actual "useful introduction" - write-once source
 material for whatever Background/Theory page ends up in `docs/`.
 
 ### What a Lyapunov exponent is
@@ -151,7 +151,7 @@ whether the underlying system is chaotic:
   direction is generic for any continuous-time attractor (perturbing
   along the trajectory itself neither grows nor shrinks).
 - **Sum invariant.** `sum(lambda_i) = lim (1/T) integral trace(J(x(t))) dt`
-  — for systems where `trace(J)` is constant (e.g. Lorenz), this is known
+  - for systems where `trace(J)` is constant (e.g. Lorenz), this is known
   exactly with no simulation at all; for others (e.g. Rössler) it reduces
   to a time-average of one state variable, checkable from an independent
   trajectory. `notes/validation_systems.md` (source of Bucket-1's tier
@@ -162,7 +162,7 @@ whether the underlying system is chaotic:
   invariant under a continuous transformation (e.g. Kuramoto phases under
   a global rotation `theta_i -> theta_i + c`), the generator of that
   symmetry is an exactly-marginal direction: one exponent is pinned to
-  `0`, never negative, regardless of parameters — a model-specific but
+  `0`, never negative, regardless of parameters - a model-specific but
   very sharp correctness check (used throughout the Kuramoto examples).
 
 ### The Benettin/QR method (what lyapax implements)
@@ -174,7 +174,7 @@ not just the leading exponent:
 1. Propagate the state `x` forward one step at a time under the chosen
    fixed-step map (Euler / Heun / RK4 / RK6).
 2. Alongside it, propagate a `(d, k)` matrix `Y` of tangent vectors under
-   the same step's linearization — `k <= d` is how many leading exponents
+   the same step's linearization - `k <= d` is how many leading exponents
    are tracked; `k = d` gives the full spectrum.
 3. Every `renorm_every` steps, QR-decompose `Y = Q R`. `Q` (orthonormal)
    replaces `Y` for the next stretch; `log|diag(R)|` for that stretch is
@@ -187,8 +187,8 @@ not just the leading exponent:
 This is the direct JAX-native analogue of the classical Wolf/Sandri
 algorithm, but note lyapax's method note in `lyapax/core.py`: unlike
 older from-scratch implementations that inspired the design (see the
-project history), the numeric results were never reused as ground truth
-— every correctness claim is anchored independently, to analytic results,
+project history), the numeric results were never reused as ground truth -
+every correctness claim is anchored independently, to analytic results,
 structural invariants, or published literature values.
 
 ### What's specific to lyapax's implementation
@@ -197,7 +197,7 @@ structural invariants, or published literature values.
   dense `d x d` Jacobian (`jax.jacfwd`) and multiplying by `Y`, lyapax
   propagates each of the `k` tangent columns via one `jax.jvp`
   (forward-mode directional derivative) call, batched together with
-  `jax.vmap`. Cost is `O(k)` per raw step, not `O(d)` — the entire benefit
+  `jax.vmap`. Cost is `O(k)` per raw step, not `O(d)` - the entire benefit
   of tracking a *partial* spectrum (`k < d`) is otherwise lost if a dense
   Jacobian is computed anyway and only afterwards projected down to `k`
   columns.
@@ -210,7 +210,7 @@ structural invariants, or published literature values.
   engine.
 - **Coupling as a plain callable, not a fixed enum.** Network dynamics are
   `dfun(state, coupling, params) -> dstate` plus any
-  `coupling(cvar_state, weights, params) -> coupling` callable — linear,
+  `coupling(cvar_state, weights, params) -> coupling` callable - linear,
   sigmoidal, Kuramoto, or user-written, with no registry/dispatch layer to
   extend. `network_problem`/`network_dde_problem` (the front-door
   constructors from `notes/api_design_review.md`) just wire a `Network`
@@ -230,7 +230,7 @@ structural invariants, or published literature values.
     rounding error does not shrink smoothly as `dt` is refined.
   - **Hermite-interpolated (`interpolate=True`):** the ring buffer stores
     (value, derivative) pairs, letting any intra-step history read be
-    reconstructed via a cubic Hermite interpolant — `tau` used exactly, no
+    reconstructed via a cubic Hermite interpolant - `tau` used exactly, no
     rounding, and each Runge-Kutta stage reads history at its own
     intra-step time instead of freezing one read across the whole step
     (fixing an O(dt) accuracy ceiling that otherwise caps every integrator
@@ -240,7 +240,7 @@ structural invariants, or published literature values.
   (`network_step_parametrized`, `sweep_lyapunov_spectrum`), a whole grid
   of parameter values can be computed as one batched XLA call instead of
   one Python-level `lyapunov_spectrum` call per grid point.
-- **Runs on GPU with zero code changes** — JAX picks the backend; nothing
+- **Runs on GPU with zero code changes** - JAX picks the backend; nothing
   in lyapax is backend-specific. Whether that's *faster* is a separate,
   size-dependent question (small problems lose to per-call overhead; see
   `examples/plot_14_gpu_acceleration.py`).
@@ -257,16 +257,16 @@ structural invariants, or published literature values.
   edge (`network_dde_problem(..., tau=...)`) and a genuine per-edge
   heterogeneous delay matrix (`Connectivity` + `lyapax.simulator.make_step_fn(...,
   delay_steps=...)`, the lower-level path `examples/plot_08_delayed_coupling.py`
-  uses) — the latter currently only with the built-in hardcoded-linear
+  uses) - the latter currently only with the built-in hardcoded-linear
   coupling, see the explicit gap below.
 - Grid-snapped (fast, simple) or Hermite-interpolated (exact `tau`,
   higher per-stage order) DDE history reads.
-- Discrete chaotic maps (logistic, Hénon, or any user map) — same engine,
+- Discrete chaotic maps (logistic, Hénon, or any user map) - same engine,
   `dt=1.0` per iterate, no integrator involved.
 - Batched parameter/initial-condition sweeps via `jax.vmap`
   (`sweep_lyapunov_spectrum`), and transparent GPU execution.
 - A validation suite anchored to independent sources (exact eigenvalues,
-  structural invariants, published literature values — never against an
+  structural invariants, published literature values - never against an
   unverified from-scratch reference implementation), so a correctness
   claim about lyapax's output always has an external check behind it.
 
@@ -275,10 +275,10 @@ structural invariants, or published literature values.
 - **No adaptive/stiff ODE integration.** Every integrator is fixed-step
   (Euler/Heun/RK4/RK6); there is no `diffrax`-style adaptive-step or
   implicit solver. Exponents are for the numerical time-`dt` map, not the
-  exact continuous flow — `dt`-convergence is the caller's responsibility
+  exact continuous flow - `dt`-convergence is the caller's responsibility
   to check (see `examples/plot_07_speed_and_accuracy.py`). Tracked as an
   M7 stretch goal, not started.
-- **DDE delays must be known and fixed** — no state-dependent or
+- **DDE delays must be known and fixed** - no state-dependent or
   distributed delays. Grid-snapped mode further restricts `tau` to
   (effectively) an integer multiple of `dt`; only `interpolate=True`
   removes that specific rounding restriction, and only for the
@@ -291,7 +291,7 @@ structural invariants, or published literature values.
   signature that doesn't exist yet.
 - **No stochastic/noise-driven Lyapunov exponents.** Noise injection was
   deliberately dropped from the vendored step function (non-smooth /
-  not meaningfully compatible with a deterministic spectrum) — an
+  not meaningfully compatible with a deterministic spectrum) - an
   explicit non-goal, not a bug.
 - **No PDEs / spatiotemporal chaos.** State is always a finite-dimensional
   vector (or `(n_state_vars, n_nodes)` array for networks); there is no
@@ -302,7 +302,7 @@ structural invariants, or published literature values.
 - **`dfun_str` uses `exec()`-based codegen with no sanitization.** Fine for
   specs a caller writes themselves; not safe to build from untrusted
   input. (Tracked in `notes/milestones.md` M8 as a documentation gap to
-  close — this milestone's docstring cleanup is the place to actually add
+  close - this milestone's docstring cleanup is the place to actually add
   that warning where a reader will see it.)
 
 ## Proposed Sphinx page structure
@@ -311,15 +311,15 @@ Concrete enough to start writing against, not final:
 
 ```
 docs/
-  index.rst                 (exists — toctree entry point)
-  installation.md           (new — pip install variants, x64 requirement)
+  index.rst                 (exists - toctree entry point)
+  installation.md           (new - pip install variants, x64 requirement)
   background/
-    lyapunov_exponents.md    (new — "What a Lyapunov exponent is" + Benettin/QR, from this note)
-    lyapax_implementation.md (new — jvp/vmap, coupling-as-callable, DDE ring buffer + Hermite, vmap sweeps)
-    validation.md            (new — the tier table from notes/validation_systems.md)
-    capabilities.md          (new — the can/cannot-do lists above)
+    lyapunov_exponents.md    (new - "What a Lyapunov exponent is" + Benettin/QR, from this note)
+    lyapax_implementation.md (new - jvp/vmap, coupling-as-callable, DDE ring buffer + Hermite, vmap sweeps)
+    validation.md            (new - the tier table from notes/validation_systems.md)
+    capabilities.md          (new - the can/cannot-do lists above)
   api.rst                    (exists)
-  auto_examples/             (generated by sphinx-gallery — do not hand-edit)
+  auto_examples/             (generated by sphinx-gallery - do not hand-edit)
 ```
 
 Once these pages exist with stable target names, Bucket 1 of the
@@ -329,7 +329,7 @@ cross-reference audit above can be done as a single pass: replace each
 ## Next steps (not done in this note)
 
 - [ ] Write the four new `docs/background/*` pages from the "Background"
-      section above (adapt, don't copy verbatim — this note is source
+      section above (adapt, don't copy verbatim - this note is source
       material, not final prose).
 - [ ] Do the Bucket 1/2/3 docstring and example cleanup pass per the
       tables above; re-run `sphinx-build -b html docs docs/_build/html`
@@ -343,7 +343,7 @@ cross-reference audit above can be done as a single pass: replace each
       pass since it's a docstring edit either way).
 - [ ] Decide whether `README.md`'s "Further reading" section (currently
       linking `notes/*.md` directly) should also redirect to the built
-      docs once they exist — out of strict scope here (README isn't
+      docs once they exist - out of strict scope here (README isn't
       autodoc'd or gallery-rendered) but likely wanted for consistency.
 - [ ] Add `docs/installation.md` and wire all new pages into
       `docs/index.rst`'s toctree.

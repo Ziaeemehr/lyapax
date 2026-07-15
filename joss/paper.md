@@ -35,8 +35,8 @@ Jacobians or variational equations, `lyapax` propagates tangent vectors
 through the same numerical step function the trajectory uses, via JAX
 forward-mode automatic differentiation (`jax.jvp`) batched with
 `jax.vmap`. This makes it possible to compute exponents for arbitrary
-user-written right-hand sides — including coupled networks and
-delay-coupled systems — with no hand-derived linearization, while
+user-written right-hand sides - including coupled networks and
+delay-coupled systems - with no hand-derived linearization, while
 inheriting JAX's just-in-time compilation and transparent CPU/GPU
 execution.
 
@@ -46,8 +46,8 @@ Computing a Lyapunov spectrum reliably requires more than the textbook
 formula: one must integrate the state and a set of orthonormalized tangent
 vectors together, re-orthonormalize periodically (QR), and average the
 logarithmic growth of each direction over a long horizon in a numerically
-stable way. Implementing this correctly for a new model — especially a
-high-dimensional network or a delay system — is error-prone, and existing
+stable way. Implementing this correctly for a new model - especially a
+high-dimensional network or a delay system - is error-prone, and existing
 tools each cover only part of the space.
 
 `lyapax` fills a specific gap: a Lyapunov-spectrum engine that (i) works on
@@ -59,8 +59,8 @@ systems are cheap; (iii) treats parameter sweeps as a first-class,
 vectorized operation through `jax.vmap`; and (iv) runs unchanged on CPU or
 GPU. It is aimed at researchers in nonlinear dynamics, computational
 neuroscience, and physics who need Lyapunov spectra of custom ODE, map, or
-DDE models — particularly coupled oscillator networks and delay-coupled
-systems — without implementing or hand-linearizing the tangent-propagation
+DDE models - particularly coupled oscillator networks and delay-coupled
+systems - without implementing or hand-linearizing the tangent-propagation
 machinery themselves.
 
 # State of the field
@@ -85,7 +85,7 @@ ring-buffer handling. `lyapax` is, to the author's knowledge, the first
 JAX-native package purpose-built for Lyapunov spectra that accepts
 ordinary user-written JAX functions (rather than symbolic expressions) and
 targets the autodiff/JIT/GPU workflow directly, while remaining a narrowly
-scoped complement to — not a replacement for — these tools.
+scoped complement to - not a replacement for - these tools.
 
 # Software design
 
@@ -93,8 +93,8 @@ For an autonomous system $\dot{x} = f(x)$, `lyapax` advances the state with
 a fixed-step integrator (Euler, Heun, RK4, or RK6) and simultaneously
 propagates a $(d, k)$ matrix $Q$ of tangent vectors through the *same* step
 map. The tangent update is obtained by forward-mode automatic
-differentiation of the step function — one `jax.jvp` per tracked column,
-batched over columns with `jax.vmap` — so no analytic Jacobian is needed
+differentiation of the step function - one `jax.jvp` per tracked column,
+batched over columns with `jax.vmap` - so no analytic Jacobian is needed
 and only the requested $k$ directions are ever propagated. Every
 `renorm_every` steps the tangent matrix is QR-decomposed; the logarithms of
 the diagonal of $R$ are accumulated, and the $i$-th Lyapunov exponent is
@@ -136,7 +136,7 @@ makes the matrix-free design pay off in practice. **DDE ring-buffer
 dimension:** representing delay history as a fixed-size ring buffer appended
 to the state keeps the DDE solver structurally identical to the ODE one
 (same `jax.jvp`/`jax.vmap` machinery, same QR renormalization), but the
-augmented state's dimension — and hence memory and compute cost — grows
+augmented state's dimension - and hence memory and compute cost - grows
 with the delay-to-`dt` ratio, which is why very small `dt` relative to a long
 delay `tau` can become expensive. **Plain callables over a coupling
 registry:** networks and DDEs take an arbitrary user-supplied coupling
@@ -149,7 +149,7 @@ constrain what a coupling function can compute.
 
 `lyapax` is validated against exact and published references and
 cross-checked against independent tools. On systems with closed-form
-answers it recovers them to near machine precision — the eigenvalues of
+answers it recovers them to near machine precision - the eigenvalues of
 linear ODEs and of a coupled linear network, and $\ln 2$ for the logistic
 and tent maps. On canonical chaotic systems it matches published values:
 $\lambda_1 \approx 0.902$ for the Lorenz attractor (literature $\approx
@@ -173,7 +173,7 @@ scripts under `benchmarks/`.
 
 # Research impact statement
 
-*Placeholder — to be filled in before submission.* `lyapax` is newly
+*Placeholder - to be filled in before submission.* `lyapax` is newly
 released with no external users, citations, or downstream projects yet.
 The evidence of applicability currently available is internal: the
 validation suite against exact/literature values and independent tools
@@ -184,7 +184,7 @@ accumulates and before the package is submitted.
 
 # AI usage disclosure
 
-*Placeholder — to be filled in before submission.* This section will
+*Placeholder - to be filled in before submission.* This section will
 describe how AI tools were used in developing `lyapax` (code, tests,
 documentation, and/or this paper) and how correctness of any AI-assisted
 contributions was checked, once the project is closer to submission.

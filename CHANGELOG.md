@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   demos 15-19 and the `adaptive` extra, matching CI.
 - The `ValueError` raised when an adaptive integrator is passed to a
   network/DDE problem no longer says "not supported for DDEs" (it fires
-  for any `network_problem`, delayed or not) — corrected to describe the
+  for any `network_problem`, delayed or not) - corrected to describe the
   actual restriction (adaptive integration works only through a single,
   uncoupled `ode_problem`).
 - Docstrings, error messages, README, `pyproject.toml` comments, test
@@ -46,9 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (`background/capabilities`) characterizing `lyapax.adaptive`'s actual
   wall-clock performance: measured 2-4x slower than fixed-step `rk4`/`rk6`
   at matched accuracy (not matched `dt`/`rtol`) on every system tested,
-  including a relaxation oscillator and large (`d=1500-3000`) systems —
-  it's a tolerance-driven-accuracy and forward-mode-differentiability
-  tool, not a speed optimization.
+  including a relaxation oscillator and large (`d=1500-3000`) systems - it's
+  a tolerance-driven-accuracy and forward-mode-differentiability tool, not
+  a speed optimization.
 - `CITATION.cff`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SUPPORT.md`,
   GitHub issue templates, and a pull request template.
 - Optional adaptive-step ODE integration via `lyapax.adaptive`

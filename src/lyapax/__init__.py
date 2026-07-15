@@ -1,4 +1,4 @@
-"""lyapax — JAX-native Lyapunov exponent computation for ODEs and DDEs.
+"""lyapax - JAX-native Lyapunov exponent computation for ODEs and DDEs.
 
 Benettin/QR tangent-propagation engine for differentiable JAX maps
 (``lyapunov_spectrum``) and fixed-delay ring-buffer DDEs

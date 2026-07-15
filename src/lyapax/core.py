@@ -12,7 +12,7 @@ accumulate ``log|diag(R)|``, and replace the tangent matrix with the
 orthonormal factor ``Q`` (Benettin's method).
 
 Tangent propagation is ``jax.jvp``-based, not ``jax.jacfwd``-based: one
-``jax.jvp`` call per tracked column, batched via ``jax.vmap`` — cost is O(k)
+``jax.jvp`` call per tracked column, batched via ``jax.vmap`` - cost is O(k)
 forward-mode passes per raw step, not O(d) for a dense Jacobian, which
 matters whenever ``k < d`` (the partial-spectrum case ``jacfwd`` can't
 exploit, since it always computes all ``d`` columns regardless of how many
@@ -29,19 +29,19 @@ raising* is not the same as *useful*: for a genuinely chaotic trajectory,
 ``step_fn`` closes over the parameter being differentiated, so
 ``jax.grad``/``jax.jacfwd`` differentiate through the entire unrolled state
 trajectory, and the result inherits that trajectory's own exponential
-sensitivity to perturbation — the returned "gradient" grows roughly like
+sensitivity to perturbation - the returned "gradient" grows roughly like
 ``exp(lambda_max * horizon)`` and is numerically meaningless well before it
 overflows (confirmed empirically: unusable already within a few hundred
 steps for the Lorenz system, worse for longer runs; see
 ``tests/test_differentiability.py``). This is a known phenomenon in
-chaotic sensitivity analysis, not a lyapax-specific bug — naive
+chaotic sensitivity analysis, not a lyapax-specific bug - naive
 trajectory-unrolling gradients of long-time-averaged chaotic quantities are
 fundamentally unreliable, which is why shadowing-based methods (e.g.
 least-squares shadowing) exist in that literature. **Practical guidance:**
 ``jax.grad``/``jax.jacfwd`` through this engine are reliable for
 non-chaotic or short-horizon systems (e.g. tuning a parameter that keeps
 the trajectory on a stable fixed point/limit cycle, or a genuinely short
-run) — do not trust a gradient computed through a long chaotic trajectory
+run) - do not trust a gradient computed through a long chaotic trajectory
 without independently checking it (e.g. against a finite-difference
 estimate) first.
 """
@@ -130,13 +130,13 @@ class LyapunovResult(NamedTuple):
 
     history: jnp.ndarray
     """(n_renorm, k) running estimate at each renormalization point, in the
-    same column order as ``exponents`` — use to check convergence.
+    same column order as ``exponents`` - use to check convergence.
 
     Columns are ordered once, by the *final* row (``history[-1]`` ==
     ``exponents``), then that column order is applied to every row. Near-
     degenerate exponents can cross over during the run, so an early row's
     per-column values are not guaranteed to be individually sorted or to
-    track the same Oseledets direction throughout — only the last row is."""
+    track the same Oseledets direction throughout - only the last row is."""
 
     times: jnp.ndarray
     """(n_renorm,) elapsed time (in units of ``dt``) at each row of
@@ -434,7 +434,7 @@ def lyapunov_spectrum(
         ``step_fn``, ``state (d,) -> new_state (d,)``, in which case
         ``state0``, ``dt``, ``n_steps`` are all given explicitly (the
         original, lower-level call form). Must be a pure, differentiable
-        JAX function of ``state`` alone — close over any parameters.
+        JAX function of ``state`` alone - close over any parameters.
     state0 : (d,) initial state (pre-transient). Ignored (and may be
         omitted) when an ``ODEProblem`` is passed.
     dt : time represented by one call to ``step_fn``. For discrete maps,
@@ -444,12 +444,12 @@ def lyapunov_spectrum(
     n_steps : number of steps to run *after* the transient. Must be a
         multiple of ``renorm_every``.
     k : number of leading exponents to track (``k <= d``). Defaults to the
-        full spectrum (``k = d``). Cost scales with ``k``, not ``d`` — this
+        full spectrum (``k = d``). Cost scales with ``k``, not ``d`` - this
         is the "only the first few largest exponents" case.
     renorm_every : QR-renormalize every this many steps. Larger values
         reduce QR overhead but risk tangent-vector overflow/underflow for
         fast-growing/shrinking directions (see
-        :ref:`choosing-renorm-every`) — keep small enough that
+        :ref:`choosing-renorm-every`) - keep small enough that
         ``exp(|lambda_max| * renorm_every * dt)`` stays well within
         float64 range.
     t_transient : time to integrate (discarding tangent tracking) before

@@ -1,4 +1,4 @@
-"""Coupled, zero-delay networks — wires a dfun + a coupling callable
+"""Coupled, zero-delay networks - wires a dfun + a coupling callable
 into the flat ``state -> new_state`` shape ``lyapax.core.lyapunov_spectrum``
 expects.
 
@@ -127,7 +127,7 @@ def make_network_step_fn(
     :param params: closed over for this step function. To sweep over params via
         ``jax.vmap`` instead, use ``make_parametrized_network_step_fn`` +
         ``lyapax.sweep.sweep_lyapunov_spectrum`` (M6).
-    :param coupling_fn: see ``lyapax.coupling`` — any callable with signature
+    :param coupling_fn: see ``lyapax.coupling`` - any callable with signature
         ``(cvar_state, weights, params) -> coupling`` works, including a
         user-defined one.
     :param integrator: ``"euler"``, ``"heun"``, ``"rk4"``, ``"rk6"``, or a callable

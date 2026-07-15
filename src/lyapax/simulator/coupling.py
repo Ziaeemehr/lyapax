@@ -1,8 +1,8 @@
 """Trimmed connectivity dataclass.
 
-Adapted from vbi/simulator/spec/connectivity.py — see NOTICE.md in this
+Adapted from vbi/simulator/spec/connectivity.py - see NOTICE.md in this
 directory for provenance and what was dropped. ``vbi``'s ``CouplingSpec``
-(a fixed-``kind`` enum) is *not* vendored here — lyapax's coupling is a
+(a fixed-``kind`` enum) is *not* vendored here - lyapax's coupling is a
 plain callable instead (see ``lyapax.coupling``).
 """
 from __future__ import annotations
@@ -55,7 +55,7 @@ class Connectivity:
     def delay_steps(self, dt: float) -> np.ndarray:
         """(n, n) int32 array of delay expressed in integration steps.
 
-        Integer-step only (no sub-step interpolation) — see
+        Integer-step only (no sub-step interpolation) - see
         :ref:`dde-history-interpolation` for the accuracy tradeoff this
         implies.
         """

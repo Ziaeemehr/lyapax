@@ -61,7 +61,7 @@ def sweep_lyapunov_spectrum(
         jnp.broadcast_to(omega, (13, n_nodes))}`` to sweep ``G`` at fixed
         ``omega``.
     dt, n_steps, k, renorm_every, t_transient, seed : see
-        ``lyapax.core.lyapunov_spectrum`` — shared (not swept) across the
+        ``lyapax.core.lyapunov_spectrum`` - shared (not swept) across the
         whole grid.
     state0_batch : optional ``(n_sweep, d)`` initial conditions, one row
         per grid point, if the initial condition should vary alongside
