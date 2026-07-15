@@ -317,10 +317,26 @@ toward a Julia clone.
    methods for the genuinely-chaotic case are a possible future direction,
    not attempted here -- substantial additional machinery (not a
    `lyapunov_spectrum`-level change) for a need that hasn't arisen yet.
-2. **Kaplan-Yorke (Lyapunov) dimension.** Pure post-processing of an
-   existing `LyapunovResult.exponents` (find where cumulative sum
-   crosses zero, interpolate). No new machinery, cheap, standard
-   companion metric to a Lyapunov spectrum -- easy win.
+2. **Kaplan-Yorke (Lyapunov) dimension -- done, 2026-07-15.**
+   `lyapax.core.kaplan_yorke_dimension(exponents, d_total=None)`: pure
+   post-processing of `LyapunovResult.exponents` (walk the cumulative sum,
+   interpolate the fractional part at the zero crossing), no new
+   tangent-propagation or QR machinery. Found while implementing: two
+   byte-for-byte identical private `_kaplan_yorke_dimension` helpers
+   already existed (`tests/test_dde.py`, `benchmarks/lyapax/mackey_glass.py`)
+   -- both retired in favor of the new public function.
+   **Correctness addition beyond the original ad hoc helpers:** an
+   optional `d_total` guard -- if the tracked spectrum is a partial one
+   (`k < d_total`) and its cumulative sum never goes negative, the true
+   crossing point lies beyond what's tracked, so returning `k` (the old
+   helpers' silent behavior in this case) would understate the real
+   dimension; passing `d_total` now raises `ValueError` instead. Tested
+   in `tests/test_kaplan_yorke.py` (hand-checked crossing, all-negative,
+   full-spectrum edge case, the `d_total` guard, and a cross-check against
+   Lorenz's published exponents matching the literature's ~2.06). Demoed
+   in `examples/19_kaplan_yorke_dimension.py` (Lorenz + Rossler, plus a
+   plot of the cumulative-sum-crossing-zero mechanics the formula is
+   built on).
 3. **Covariant Lyapunov Vectors (CLVs).** A natural extension of the
    forward QR pass already in `core.py`'s `_advance`/`_renorm_block` --
    needs a backward pass through the stored `R` factors (Ginelli et

@@ -6,21 +6,9 @@ from _common import time_and_run, emit  # noqa: I001 -- must set JAX_PLATFORMS b
 import jax.numpy as jnp
 import numpy as np
 
+from lyapax.core import kaplan_yorke_dimension
 from lyapax.dde import dde_problem, lyapunov_spectrum_dde
 from lyapax import systems
-
-
-def _kaplan_yorke_dimension(exponents: np.ndarray) -> float:
-    cumsum = np.cumsum(exponents)
-    j = 0
-    for i in range(1, len(exponents) + 1):
-        if cumsum[i - 1] >= 0:
-            j = i
-        else:
-            break
-    if j == 0 or j >= len(exponents):
-        return float(j)
-    return j + cumsum[j - 1] / abs(exponents[j])
 
 
 def run(integrator):
@@ -39,5 +27,5 @@ if __name__ == "__main__":
     for integrator, tool in [("heun", "lyapax"), ("rk6", "lyapax-rk6")]:
         first_s, warm_s, result = time_and_run(run, integrator)
         exponents = np.array(result.exponents)
-        ky = _kaplan_yorke_dimension(exponents)
+        ky = kaplan_yorke_dimension(exponents)
         emit(tool, "mackey_glass_tier4.1", exponents, first_s, warm_s, kaplan_yorke_dim=ky)

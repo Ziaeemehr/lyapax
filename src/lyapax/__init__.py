@@ -16,6 +16,7 @@ from .core import (
     LyapunovResult,
     ODEProblem,
     convergence_drift,
+    kaplan_yorke_dimension,
     lyapunov_spectrum,
     ode_problem,
 )
@@ -35,6 +36,7 @@ __all__ = [
     "LyapunovCheckpoint",
     "ConvergenceDrift",
     "convergence_drift",
+    "kaplan_yorke_dimension",
     "lyapunov_spectrum",
     "lyapunov_spectrum_dde",
     "ODEProblem",

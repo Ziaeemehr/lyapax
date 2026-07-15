@@ -51,7 +51,13 @@ demonstrating gradient-based tuning of a parameter toward a target
 exponent on a non-chaotic system, then measuring how the same gradient
 becomes numerically meaningless (grows by many orders of magnitude with
 trajectory length rather than converging) once the underlying system is
-genuinely chaotic.
+genuinely chaotic -- and the Kaplan-Yorke (Lyapunov) dimension
+(``lyapax.core.kaplan_yorke_dimension``), a pure post-processing readout
+of an existing Lyapunov spectrum, computed for Lorenz and Rossler and
+matching published values, with the cumulative-sum-crossing-zero mechanics
+behind the formula plotted directly and the partial-spectrum guard
+(``d_total=``) shown raising instead of silently understating the
+dimension.
 
 New capability -> new demo: as engine features land (a new coupling kind, a
 new delay structure, a performance change, ...), add a runnable example

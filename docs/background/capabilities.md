@@ -29,6 +29,11 @@ quickly whether it fits your problem.
   see the gaps below.
 - **Batched parameter / initial-condition sweeps** via `jax.vmap`
   (`sweep_lyapunov_spectrum`): a whole parameter grid as one XLA call.
+- **Kaplan-Yorke (Lyapunov) dimension** (`lyapax.core.kaplan_yorke_dimension`)
+  — a pure post-processing readout of an existing `LyapunovResult.exponents`,
+  no extra simulation. Raises rather than silently understating the answer
+  if given a partial spectrum (`d_total=`) whose cumulative sum never
+  crosses zero within the tracked exponents.
 - **Differentiating an exponent w.r.t. a system parameter**
   (`jax.grad`/`jax.jacfwd(lyapunov_spectrum(...).exponents[i])`) — reliable
   for non-chaotic or short-horizon systems (e.g. gradient-based tuning of

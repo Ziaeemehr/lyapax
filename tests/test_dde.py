@@ -24,6 +24,7 @@ import pytest
 from scipy.special import lambertw
 
 from lyapax import systems
+from lyapax.core import kaplan_yorke_dimension
 from lyapax.coupling import kuramoto_coupling
 from lyapax.dde import (
     constant_history_buf0,
@@ -255,22 +256,6 @@ def test_tangent_propagation_matches_dense_jacfwd():
 # Tier 4.1 -- Mackey-Glass, qualitative chaos check
 # ---------------------------------------------------------------------------
 
-def _kaplan_yorke_dimension(exponents: np.ndarray) -> float:
-    """exponents must be sorted descending. Standard KY formula:
-    j + sum(exponents[:j]) / |exponents[j]|, j = largest index with a
-    non-negative partial sum."""
-    cumsum = np.cumsum(exponents)
-    j = 0
-    for i in range(1, len(exponents) + 1):
-        if cumsum[i - 1] >= 0:
-            j = i
-        else:
-            break
-    if j == 0 or j >= len(exponents):
-        return float(j)
-    return j + cumsum[j - 1] / abs(exponents[j])
-
-
 def test_mackey_glass_qualitative_chaos():
     beta, gamma, n, tau = 0.2, 0.1, 10.0, 17.0
     dt = 1.0
@@ -296,7 +281,7 @@ def test_mackey_glass_qualitative_chaos():
     assert abs(exponents[1]) < 0.01
     assert np.all(exponents[2:] < 0.0)
 
-    ky = _kaplan_yorke_dimension(exponents)
+    ky = kaplan_yorke_dimension(exponents)
     assert 1.5 < ky < 3.5
 
 

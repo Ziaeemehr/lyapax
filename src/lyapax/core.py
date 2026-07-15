@@ -280,6 +280,64 @@ def convergence_drift(
     return ConvergenceDrift(absolute=absolute, relative=relative, converged=converged)
 
 
+def kaplan_yorke_dimension(
+        exponents: jnp.ndarray, d_total: int | None = None,
+) -> float:
+    """
+    Kaplan-Yorke (Lyapunov) dimension: an estimate of an attractor's
+    fractal dimension from its Lyapunov spectrum (Kaplan & Yorke, 1979),
+    ``j + sum(exponents[:j]) / |exponents[j]|`` where ``j`` is the largest
+    prefix length with a non-negative partial sum. Pure post-processing of
+    ``LyapunovResult.exponents`` -- no tangent-propagation or QR involved.
+
+    :param exponents: ``(k,)`` exponents, sorted descending -- exactly
+        ``LyapunovResult.exponents``'s own order, so
+        ``kaplan_yorke_dimension(result.exponents)`` is the usual call.
+    :param d_total: the full system dimension, if ``exponents`` is only a
+        *partial* spectrum (``k < d_total``). If given, and the partial
+        sum never goes negative within the tracked ``k`` exponents, raises
+        ``ValueError`` instead of silently returning ``k`` -- the true
+        crossing point lies beyond what was tracked, so ``k`` would
+        understate the answer; track more exponents (increase ``k``)
+        instead. Omit (the default) when ``exponents`` is already the full
+        spectrum -- the "sum stays non-negative" case then correctly
+        returns ``len(exponents)`` (the attractor fills the whole tracked
+        phase space, e.g. a conservative system).
+
+    :return: the Kaplan-Yorke dimension, in ``[0, len(exponents)]``.
+
+    Usage
+    -----
+    >>> import jax.numpy as jnp
+    >>> from lyapax.core import kaplan_yorke_dimension
+    >>> float(kaplan_yorke_dimension(jnp.array([0.906, 0.0, -14.57])))  # Lorenz
+    2.0621...
+    """
+    exponents = jnp.asarray(exponents)
+    n = exponents.shape[0]
+    cumsum = jnp.cumsum(exponents)
+    j = 0
+    for i in range(1, n + 1):
+        if float(cumsum[i - 1]) >= 0.0:
+            j = i
+        else:
+            break
+    if j == n:
+        if d_total is not None and d_total > n:
+            raise ValueError(
+                f"kaplan_yorke_dimension: the cumulative sum of all {n} "
+                "tracked exponents never goes negative, so the "
+                f"Kaplan-Yorke crossing point lies beyond the tracked "
+                f"partial spectrum (d_total={d_total} > k={n}) -- track "
+                "more exponents (a larger k) to find it. Omit d_total "
+                "only when `exponents` is already the full spectrum."
+            )
+        return float(j)
+    if j == 0:
+        return 0.0
+    return j + float(cumsum[j - 1]) / abs(float(exponents[j]))
+
+
 @dataclass(frozen=True)
 class ODEProblem:
     """Owns the ``(step_fn, state0, dt)`` triple that ``lyapunov_spectrum``
