@@ -75,8 +75,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install lyapax (docs extras)
-        run: pip install -e ".[docs]"
+      # docs extra alone omits diffrax (kept optional, see pyproject.toml) --
+      # but sphinx-gallery unconditionally executes examples/15_adaptive_ode.py
+      # (unlike the test suite, which pytest.importorskip's diffrax-dependent
+      # tests), so the docs build needs the adaptive extra too.
+      - name: Install lyapax (docs + adaptive extras)
+        run: pip install -e ".[docs,adaptive]"
 
       - name: Build Sphinx docs
         run: sphinx-build -b html -W docs docs/_build/html
