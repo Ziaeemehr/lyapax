@@ -1,7 +1,7 @@
-"""M0 sanity tests: environment is correct and the vendored plumbing works.
+"""Sanity tests: environment is correct and the vendored plumbing works.
 
-Not Lyapunov-spectrum correctness tests yet (that starts at M1, against
-notes/validation_systems.md) -- just "does the foundation hold."
+Not Lyapunov-spectrum correctness tests yet (those are in
+docs/background/validation.md's tiers) -- just "does the foundation hold."
 """
 from importlib import metadata
 
@@ -31,8 +31,7 @@ def test_x64_enabled():
 
 
 def test_running_on_cpu():
-    # Confirms conftest's JAX_PLATFORMS=cpu took effect (GPU is broken on
-    # this machine -- see notes/milestones.md).
+    # Confirms conftest's JAX_PLATFORMS=cpu took effect.
     assert jax.default_backend() == "cpu"
 
 

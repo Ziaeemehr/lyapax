@@ -1,5 +1,5 @@
-"""Audit of ``notes/open_issues.md`` item 6.1: differentiating a Lyapunov
-exponent w.r.t. a system parameter through ``lyapax.core.lyapunov_spectrum``.
+"""Audit of differentiating a Lyapunov exponent w.r.t. a system parameter
+through ``lyapax.core.lyapunov_spectrum``.
 
 Unlike ``lyapax.adaptive``'s diffrax-backed integrator (which raises
 ``ValueError`` under reverse-mode AD, see ``tests/test_adaptive_ode.py``),

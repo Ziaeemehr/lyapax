@@ -13,17 +13,15 @@ from the `vbi` project (https://github.com/ins-amu/vbi), licensed under the
 Apache License 2.0. Copyright the `vbi` authors (Abolfazl Ziaeemehr, Meysam
 Hashemi, Marmaduke Woodman).
 
-Changes made relative to the originals, per the decision recorded in
-`notes/milestones.md` (M0 — vendor a trimmed copy rather than depend on
-`vbi` at import time):
+Changes made relative to the originals -- vendoring a trimmed copy rather
+than depending on `vbi` at import time:
 
 - Dropped monitors, stimuli, the Balloon-Windkessel/BOLD path, the
   parameter sweeper, and the `sigmoidal` / `kuramoto` coupling kinds —
   out of scope for `lyapax` v1.
 - Dropped stochastic noise injection and state-bound clipping from the
   step function — both are non-smooth or not meaningfully compatible with
-  a deterministic Lyapunov spectrum (see "risk #3" in
-  `notes/milestones.md`).
+  a deterministic Lyapunov spectrum.
 - Dropped presentation-only `ModelSpec` methods (`describe`, `_repr_html_`,
   LaTeX rendering) — not needed for the numerical engine.
 - Dropped `Connectivity.from_tvb` / `.from_file` / `.save` / `.load` and
@@ -33,11 +31,10 @@ Changes made relative to the originals, per the decision recorded in
   `build_coupling` factories in `vbi`'s numpy/JAX backends). Those dispatch
   on a fixed string enum via hardcoded `if/elif`, which means a user can't
   add a new coupling without patching `vbi`'s source. `lyapax.coupling`
-  instead makes coupling a plain callable — see that module and the M3
-  note in `notes/milestones.md`.
+  instead makes coupling a plain callable — see that module.
 - `step.py`'s `make_step_fn` gained two additive, optional parameters not
-  present in the `vbi` original: `coupling_fn` and `tau_steps` (M4,
-  `notes/milestones.md`). When `coupling_fn` is given, it replaces the
+  present in the `vbi` original: `coupling_fn` and `tau_steps`. When
+  `coupling_fn` is given, it replaces the
   hardcoded linear coupling formula for the zero-delay branch and for a
   *uniform*-delay branch (a new `_read_uniform_delayed_cvar` O(1)
   ring-buffer read, added alongside the original per-edge

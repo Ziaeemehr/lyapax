@@ -1,13 +1,15 @@
 """Runs every benchmark script under benchmarks/{lyapax,jitcode,jitcdde,chaostools}/
-and writes benchmarks/results.json, so notes/benchmark_report.md's tables can be
-regenerated with one command instead of manual copy-paste.
+and writes benchmarks/results.json, so docs/background/benchmarks.md's tables can be
+regenerated (via benchmarks/report_tables.py) with one command instead of
+manual copy-paste.
 
 Usage: python benchmarks/collect_results.py
 Requires: the lyapax dev environment, plus `pip install -e .[benchmark]` for
 jitcode/jitcdde, plus a working `julia` on PATH with ChaosTools.jl installed
-(see notes/benchmark_report.md's Environment table) -- chaostools scripts are
-skipped with a warning, not a hard failure, if julia isn't found, since they're
-not needed to validate the Python-side tools.
+(see docs/background/benchmarks.md's "Comparison targets" section for what
+each tool is) -- chaostools scripts are skipped with a warning, not a hard
+failure, if julia isn't found, since they're not needed to validate the
+Python-side tools.
 
 The lyapax scripts (only -- jitcode/jitcdde/ChaosTools.jl have no GPU backend)
 are additionally re-run with `JAX_PLATFORMS=cuda`, so the performance table

@@ -1,5 +1,5 @@
-"""Audit of notes/open_issues.md item 6.2: Kaplan-Yorke (Lyapunov) dimension
-as a public post-processing helper (Kaplan & Yorke, 1979). Replaces two
+"""Audit of the Kaplan-Yorke (Lyapunov) dimension as a public post-processing
+helper (Kaplan & Yorke, 1979). Replaces two
 byte-for-byte identical private ``_kaplan_yorke_dimension`` helpers that
 previously lived in tests/test_dde.py and benchmarks/lyapax/mackey_glass.py.
 """

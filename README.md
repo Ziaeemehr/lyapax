@@ -88,7 +88,7 @@ differentiating through an augmented `(state, ring_buffer)` carry.
   convergence for anything you report. The adaptive integrator is for
   tolerance-driven accuracy control, not speed — measured 2-4x slower than
   `rk4`/`rk6` at matched accuracy, not faster; see
-  `notes/adaptive_speed_investigation.md`.
+  `docs/background/capabilities.md`.
 - **DDE delays must be known and fixed**, resolved one of two ways. By
   default (grid-snapped), a physical delay `tau` is rounded to the
   nearest multiple of `dt` (`lyapax.dde.resolve_tau_steps`); use
@@ -144,8 +144,9 @@ API reference; open `docs/_build/html/index.html` when it's done.
 
 ## Further reading
 
-- `notes/milestones.md` — design history and open risks.
-- `notes/validation_systems.md` — the correctness tests this package is
+- `docs/background/validation.md` — the correctness tests this package is
   held to (exact values, structural invariants, literature figures).
-- `notes/benchmark_report.md` — comparison against `jitcode`/`jitcdde` and
+- `docs/background/benchmarks.md` — comparison against `jitcode`/`jitcdde` and
   `ChaosTools.jl`.
+- `docs/background/capabilities.md` — a candid summary of what lyapax does
+  and does not do, including measured performance characteristics.

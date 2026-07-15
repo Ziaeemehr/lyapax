@@ -31,9 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   for any `network_problem`, delayed or not) — corrected to describe the
   actual restriction (adaptive integration works only through a single,
   uncoupled `ode_problem`).
-- Docstrings no longer reference the repository's internal `notes/`
-  directory (not part of the published package or docs); those pointers
-  now go to proper Sphinx cross-references instead.
+- Docstrings, error messages, README, `pyproject.toml` comments, test
+  module docstrings, and the `benchmarks/` scripts no longer reference the
+  repository's internal `notes/` directory (not part of the published
+  package or docs); those pointers now go to the published `docs/background/`
+  pages, proper Sphinx cross-references, or were simply dropped where they
+  cited an internal-only design-history note with no public equivalent.
 
 ### Added
 

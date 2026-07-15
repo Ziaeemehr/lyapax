@@ -1,4 +1,4 @@
-"""Shared plumbing for the jitcdde side of notes/benchmark_report.md.
+"""Shared plumbing for the jitcdde side of docs/background/benchmarks.md.
 
 jitcdde_lyap's `integrate(target_time)` returns `(state, local_lyaps,
 integration_time)` -- the third element is the *actual* time advanced

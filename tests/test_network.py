@@ -1,4 +1,4 @@
-"""M3 tests: coupled zero-delay networks (notes/validation_systems.md Tier 3),
+"""Tests for coupled zero-delay networks (docs/background/validation.md Tier 3),
 plus smoke tests for sigmoidal/Kuramoto coupling and a demonstration that a
 user-written coupling function (no import from lyapax.coupling at all)
 works exactly like a built-in one -- this is the concrete answer to "how

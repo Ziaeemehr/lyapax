@@ -1,8 +1,7 @@
-"""M4 validation tests: Tier 4 from notes/validation_systems.md, plus
+"""Validation tests: Tier 4 from docs/background/validation.md, plus
 engine-mechanism checks for the DDE Lyapunov engine (src/lyapax/dde.py),
 which reuses the vendored ring-buffer simulator (src/lyapax/simulator/step.py)
-rather than a second history mechanism -- see notes/milestones.md (M4) for
-the design.
+rather than a second history mechanism.
 
 Tier 4.2 (linear scalar DDE) is checked first, against the transcendental
 characteristic equation's dominant root (Lambert W) -- this isolates a DDE
@@ -72,9 +71,8 @@ def test_dde_problem_call_rejects_conflicting_direct_dt():
 
 def test_linear_scalar_dde_dt_convergence():
     """Same physical tau at two different dt: the LE estimate should be
-    dt-stable (cross-cutting test hygiene in notes/validation_systems.md),
-    catching integer-step delay rounding bugs (risk #4 in
-    notes/milestones.md) rather than genuine dt-dependence."""
+    dt-stable, catching integer-step delay rounding bugs rather than
+    genuine dt-dependence."""
     a, tau = 0.5, 0.3
     rhs = systems.linear_scalar_dde(a=a)
     expected = float((lambertw(-a * tau, k=0) / tau).real)
@@ -292,7 +290,7 @@ def test_mackey_glass_qualitative_chaos():
     )
 
     exponents = np.array(result.exponents)
-    # Reported order of magnitude: 1e-2-1e-3 (see notes/validation_systems.md
+    # Reported order of magnitude: 1e-2-1e-3 (see docs/background/validation.md
     # Tier 4.1) -- treat as qualitative/order-of-magnitude, not digit-matching.
     assert 0.0005 < exponents[0] < 0.05
     assert abs(exponents[1]) < 0.01

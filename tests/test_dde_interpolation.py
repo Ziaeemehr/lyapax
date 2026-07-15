@@ -1,6 +1,6 @@
 """Hermite-interpolated DDE history reads (make_step_fn(..., interpolate=True)).
 
-See notes/stepping_accuracy_review.md (Part B/C) for the design. With
+See docs/background/lyapax_implementation.md for the design. With
 interpolate=True the delayed history is re-read at each integrator
 stage's own intra-step time via the cubic Hermite interpolant, so the
 integrator's nominal convergence order is actually realized (capped at

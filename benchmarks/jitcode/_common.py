@@ -1,4 +1,4 @@
-"""Shared plumbing for the jitcode side of notes/benchmark_report.md.
+"""Shared plumbing for the jitcode side of docs/background/benchmarks.md.
 
 jitcode_lyap's `integrate(t)` returns *local* Lyapunov exponents (growth
 over the just-completed sub-interval), not a running average -- the

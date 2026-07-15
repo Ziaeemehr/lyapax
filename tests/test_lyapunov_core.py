@@ -1,4 +1,4 @@
-"""M1 validation tests: Tiers 0-2 from notes/validation_systems.md.
+"""Validation tests: Tiers 0-2 from docs/background/validation.md.
 
 None of these compare against anything in lyapunov-master/ -- references
 are exact analytic values, structural invariants (constant/derivable
@@ -167,8 +167,8 @@ def test_rossler_lambda1_order_of_magnitude():
 def test_rossler_sum_matches_divergence_identity():
     # Tier 1.2: unlike Lorenz, trace(J) = a + (x - c) is state-dependent, so
     # the structural check needs the trajectory's time-average of x:
-    # lambda1 + lambda2 + lambda3 = a - c + <x>_t (notes/validation_systems.md
-    # Sec 1.2). Stronger than the order-of-magnitude check above since it
+    # lambda1 + lambda2 + lambda3 = a - c + <x>_t (docs/background/validation.md
+    # Tier 1.2). Stronger than the order-of-magnitude check above since it
     # doesn't depend on trusting a literature lambda1 value at all.
     a, b, c = 0.2, 0.2, 5.7
     rhs = systems.rossler(a, b, c)

@@ -1,6 +1,4 @@
-"""Deterministic, Lyapunov-free check of the ring buffer's time convention:
-see notes/possible_solution_to_open_issues.md's "Suspected Ring-Buffer
-Off-by-One" and notes/open_issues.md item 2.
+"""Deterministic, Lyapunov-free check of the ring buffer's time convention.
 
 Invariant under test, independent of any dfun/coupling/QR machinery:
 

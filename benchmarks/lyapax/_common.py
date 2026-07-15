@@ -1,4 +1,4 @@
-"""Shared plumbing for the lyapax side of notes/benchmark_report.md.
+"""Shared plumbing for the lyapax side of docs/background/benchmarks.md.
 
 Every benchmark script (lyapax, jitcode, jitcdde, chaostools) prints one
 JSON object as its last stdout line, with at least

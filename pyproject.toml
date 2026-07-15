@@ -31,8 +31,8 @@ classifiers = [
 ]
 
 # Verified against jax==0.10.2 in the local dev environment (lyapax venv).
-# CI/dev defaults to CPU (see tests/conftest.py); GPU is opt-in and
-# verified working as of M6 -- see notes/milestones.md and tests/test_gpu.py.
+# CI/dev defaults to CPU (see tests/conftest.py); GPU is opt-in -- see
+# tests/test_gpu.py.
 dependencies = [
     "jax>=0.10",
     "numpy>=1.23",
@@ -46,7 +46,7 @@ dev = [
 examples = [
     "matplotlib>=3.7",
 ]
-# Adaptive-step ODE integration (M9, notes/milestones.md) -- ODE-only,
+# Adaptive-step ODE integration -- ODE-only,
 # diffrax has no DDE support (patrick-kidger/diffrax#406). Verified against
 # diffrax==0.7.2 in the lyapax dev env (jax==0.10.2 already installed
 # satisfies diffrax's jax>=0.4.38 floor). equinox is a diffrax dependency
@@ -63,10 +63,11 @@ docs = [
     "matplotlib>=3.7",
     "myst-parser>=2.0",
 ]
-# Only for reproducing notes/benchmark_report.md's cross-tool comparison
+# Only for reproducing docs/background/benchmarks.md's cross-tool comparison
 # (benchmarks/jitcode/, benchmarks/jitcdde/) -- not needed for lyapax itself
 # or for running the test suite. ChaosTools.jl is a separate Julia install,
-# see the report's Environment table.
+# see benchmarks/collect_results.py's module docstring for the Environment
+# requirements.
 benchmark = [
     "jitcode>=1.7",
     "jitcdde>=1.8",

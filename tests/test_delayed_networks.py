@@ -1,13 +1,12 @@
-"""M5 validation tests: Tier 4.3-style checks from notes/validation_systems.md
+"""Validation tests: Tier 4.3-style checks from docs/background/validation.md
 for genuine per-edge (heterogeneous) delayed networks.
 
-Unlike M4, this needed no new engine code: lyapax.dde.lyapunov_spectrum_dde
-already differentiates through whatever carry step_fn produces regardless
-of delay structure, so a per-edge delay_steps matrix (via the untouched
-legacy lyapax.simulator.make_step_fn(coupling_fn=None, delay_steps=...)
-path) just works -- see notes/milestones.md (M5) for how this was verified
-before writing any new code. These tests are the validation that
-verification implied, not proof of new machinery.
+This needed no new engine code: lyapax.dde.lyapunov_spectrum_dde already
+differentiates through whatever carry step_fn produces regardless of delay
+structure, so a per-edge delay_steps matrix (via the untouched legacy
+lyapax.simulator.make_step_fn(coupling_fn=None, delay_steps=...) path)
+just works. These tests are the validation that verification implied, not
+proof of new machinery.
 """
 import jax.numpy as jnp
 import numpy as np
@@ -56,9 +55,8 @@ def test_per_edge_delay_near_zero_recovers_m3_eigenvalues():
     dfun = build_jax_dfun(model)
     params = {"gamma": gamma, "G": G}
     # dt=1e-3 (an order of magnitude looser) used to pass here too, but only
-    # because the ring buffer's write-index off-by-one (see
-    # notes/possible_solution_to_open_issues.md) silently made a "1 step"
-    # delay behave like a 0-step delay -- i.e. this test was accidentally
+    # because the ring buffer's write-index off-by-one silently made a
+    # "1 step" delay behave like a 0-step delay -- i.e. this test was accidentally
     # checking has_delays=True against itself, not a genuine small delay.
     # Now that the write index is fixed (physical time k*dt lands in slot
     # k, not k-1), tau_steps=1 is a real one-step delay, whose O(tau) bias
@@ -100,7 +98,7 @@ def test_per_edge_delay_near_zero_recovers_m3_eigenvalues():
     np.testing.assert_allclose(np.array(result_dde.exponents), expected, atol=3e-3)
     # Not tighter than result_dde's own atol above: step_ode's coupling is
     # now recomputed fresh at each integrator stage instead of frozen once
-    # per step (see notes/stepping_accuracy_review.md), so it's
+    # per step (see docs/background/lyapax_implementation.md), so it's
     # essentially exact here; step_dde's legacy per-edge delay_steps path
     # still freezes coupling once per step, so nearly all of the residual
     # gap between the two is step_dde's own error against `expected`, not
