@@ -56,7 +56,7 @@ form for that reason, not because it predates the new API.
 # %%
 import os
 
-os.environ["JAX_PLATFORM_NAME"] = "cpu"
+os.environ["JAX_PLATFORMS"] = "cpu"
 import time
 
 import jax

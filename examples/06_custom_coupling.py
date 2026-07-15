@@ -36,7 +36,7 @@ bit-for-bit in spirit, just for this smaller network.
 # %%
 import os
 
-os.environ["JAX_PLATFORM_NAME"] = "cpu"
+os.environ["JAX_PLATFORMS"] = "cpu"
 
 import jax
 import jax.numpy as jnp

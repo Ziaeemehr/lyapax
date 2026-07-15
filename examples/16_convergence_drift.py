@@ -26,7 +26,7 @@ as soon as ``convergence_drift`` reports ``lambda1`` has settled.
 # %%
 import os
 
-os.environ["JAX_PLATFORM_NAME"] = "cpu"
+os.environ["JAX_PLATFORMS"] = "cpu"
 
 import jax
 import jax.numpy as jnp

@@ -42,7 +42,7 @@ same problem-object recipe ``ode_problem`` gives the plain-ODE case in
 # %%
 import os
 
-os.environ["JAX_PLATFORM_NAME"] = "cpu"
+os.environ["JAX_PLATFORMS"] = "cpu"
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt

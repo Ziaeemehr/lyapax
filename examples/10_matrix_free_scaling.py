@@ -32,7 +32,7 @@ for) stays fixed while dense keeps paying for all ``d`` columns regardless.
 # %%
 import os
 
-os.environ["JAX_PLATFORM_NAME"] = "cpu"
+os.environ["JAX_PLATFORMS"] = "cpu"
 import time
 
 import jax

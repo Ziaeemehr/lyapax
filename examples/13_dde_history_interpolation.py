@@ -58,7 +58,7 @@ grid-snapped default has no sub-step history to read, so it stays O(dt)
 import os
 import warnings
 
-os.environ["JAX_PLATFORM_NAME"] = "cpu"
+os.environ["JAX_PLATFORMS"] = "cpu"
 
 import jax
 import jax.numpy as jnp

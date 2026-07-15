@@ -32,7 +32,7 @@ limiting how few steps a run can get away with.
 # %%
 import os
 
-os.environ["JAX_PLATFORM_NAME"] = "cpu"
+os.environ["JAX_PLATFORMS"] = "cpu"
 
 import time
 
