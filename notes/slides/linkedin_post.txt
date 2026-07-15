@@ -1,0 +1,31 @@
+I am releasing lyapax v0.2.0, an early version of a JAX-native Python package for computing Lyapunov exponents and Lyapunov spectra. I developed this work as part of my current research at Aix-Marseille University.
+
+The package is aimed at researchers working with nonlinear dynamics, computational neuroscience, physics, and coupled dynamical systems who want to compute Lyapunov spectra without hand-writing Jacobians or tangent-space QR machinery for every new model.
+
+What lyapax supports today:
+
+- ODEs, discrete maps, coupled networks, and fixed-delay DDEs
+- Full or partial Lyapunov spectra
+- Matrix-free tangent propagation with jax.jvp / jax.vmap
+- Batched parameter sweeps with jax.vmap
+- CPU and GPU execution through JAX
+- Validation examples against analytic, published, and independent-tool references
+
+The GPU point is one of the reasons I built it in JAX. For small systems, GPU execution is usually not faster because launch overhead dominates. But for larger dense networks and partial spectra, lyapax can use the JAX GPU backend directly, while many existing Lyapunov-spectrum tools are built around symbolic compilation, dense Jacobians, or CPU-first workflows.
+
+I see lyapax as a focused tool, not a general differential-equation solver. It is designed specifically around Lyapunov-spectrum computation: state evolution, tangent propagation, QR renormalization, convergence history, and reusable problem definitions.
+
+The package is usable now, but I am especially looking for feedback from people who can try it on real systems:
+
+- Does the API match how you define your models?
+- Are the examples enough to get started?
+- Where does it fail for your workflow?
+- What systems should be added to the validation suite?
+
+Version: 0.2.0
+GitHub: https://github.com/Ziaeemehr/lyapax
+Docs: https://lyapax.readthedocs.io
+
+Feedback, issues, and contributions are very welcome.
+
+#JAX #Python #DynamicalSystems #ChaosTheory #LyapunovExponents #ScientificComputing #ComputationalPhysics #OpenSource
