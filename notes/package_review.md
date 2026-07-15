@@ -1,185 +1,373 @@
 # Review of `lyapax`
 
-Scope: this review covers the package code, tests, examples, notes, README, and packaging metadata in this repository. The `benchmarks/` directory is intentionally excluded.
+Scope: this review covers the package code, tests, examples, public documentation,
+notes, CI, and packaging metadata in this repository at commit `9c72dad` (2026-07-15).
+The `benchmarks/` directory is considered only where its published results affect
+user-facing claims; benchmark implementation details are otherwise excluded.
 
-Validation run: `python3 -m pytest` completed with `32 passed, 2 skipped` in 36.25 s. The skipped tests are GPU opt-in tests.
+Validation run: `PYTHONPATH=src python3 -m pytest` collected 72 tests and completed
+with `69 passed, 4 skipped, 1 failed` in 77.85 s. The four skips are two GPU tests
+and two Diffrax-dependent test modules unavailable in the base environment. The
+single failure is the installed-distribution metadata assertion in
+`test_package_version_is_single_sourced`; the source-tree run deliberately used
+`PYTHONPATH` because `lyapax` was not installed in that environment. CI installs
+the package before testing and covers Python 3.11 and 3.12.
 
 ## 1. Scientific correctness
 
-The main implemented algorithm is the Benettin/QR method for Lyapunov spectra. `lyapax.core.lyapunov_spectrum` propagates tangent vectors with JAX forward-mode JVPs, periodically applies QR, accumulates `log(abs(diag(R)))`, and divides by elapsed time. This is mathematically consistent with standard Benettin-style variational/tangent dynamics and QR reorthonormalization. The package does not implement the Wolf time-series reconstruction algorithm; it computes exponents from known differentiable dynamical systems.
+The central algorithm remains the Benettin/QR method. `lyapax.core.lyapunov_spectrum`
+propagates tangent columns with JAX forward-mode JVPs, periodically applies QR,
+accumulates `log(abs(diag(R)))`, and divides by elapsed time. It computes exponents
+from a known differentiable dynamical system; it is not a Wolf-style estimator from
+an observed scalar time series.
 
-For ODEs and maps, the public interface accepts a one-step differentiable map `state -> new_state`. For continuous flows, examples/tests wrap RHS functions in fixed-step RK4. The computed exponents are therefore exponents of the numerical time-`dt` map divided by `dt`, not of an adaptive or exact flow. That is scientifically acceptable when `dt` convergence is checked.
+For maps and fixed-step ODEs, the reported values are exponents of the numerical
+time-`dt` map divided by `dt`. The newer Diffrax adapter preserves this outer-map
+contract while using adaptive internal steps over each interval of length `dt`.
+Neither route makes the result an exact-flow exponent: fixed-step users must check
+`dt` convergence and adaptive users must check tolerance convergence.
 
-For fixed-delay DDEs, `lyapax.dde.lyapunov_spectrum_dde` treats `(state, ring_buffer)` as a finite-dimensional Markov state and differentiates through the ring-buffer step. This matches the discretized-map idea used for DDE Lyapunov spectra, but only for integer-step delays on a fixed grid. It is not an infinite-dimensional continuous-history DDE method with interpolation or a function-space inner product.
+For DDEs, `lyapunov_spectrum_dde` differentiates the augmented `(state, ring_buffer)`
+map, including delayed-history sensitivities. Two history modes now exist. The
+default grid-snapped mode rounds a physical delay to the grid and remains first-order
+in delay representation. `interpolate=True` uses cubic-Hermite history reconstruction
+and stage-specific delayed reads; tests demonstrate second-order Heun behavior and an
+approximately fourth-order RK4/Hermite accuracy ceiling on a scalar analytic case.
+This is a substantial improvement over the original integer-step-only scope, but it
+is still a finite-dimensional discretization of a fixed-delay DDE, not a general
+function-space DDE solver.
 
-Criticism: DDE support is scientifically limited to integer-step delays and finite-dimensional ring-buffer discretizations. This matters because the spectrum depends on the history discretization and delay rounding. Impact: High for DDE users with physical delays not aligned to `dt`; Low for deliberately grid-aligned fixed-delay experiments. Improvement: expose the effective delay `tau_eff = tau_steps * dt`, document that spectra are for the discretized map, and add user-facing convergence examples at decreasing `dt`.
+Kaplan-Yorke dimension is now provided as post-processing of a sorted spectrum. Its
+`d_total` guard correctly refuses to understate the dimension when a tracked partial
+spectrum has not yet reached the cumulative-sum crossing.
 
-Criticism: the package sorts exponents only by the final finite-time estimate. This is standard for reporting, but near-degenerate spectra can swap order over time. Impact: Medium for interpreting convergence histories and covariant subspace alignment. Improvement: document that `history` columns are reordered by final order, and consider returning unsorted cumulative estimates or the final permutation.
+Criticism: interpolated history is limited to the uniform-delay path, requires
+`tau >= dt`, and does not support state-dependent or distributed delays. Per-edge
+heterogeneous delays remain grid-based and tied to built-in linear coupling. Impact:
+High for general DDE users; Low for the documented fixed, uniform-delay use case.
+Improvement: keep these restrictions prominent in API docs and add interpolation to
+the per-edge path only if a concrete scientific use case justifies its complexity.
+
+Criticism: `history` columns are sorted once by the final finite-time estimate. Near-
+degenerate exponents can exchange order during a run, so a column is not a persistent
+mode identity. Impact: Medium for interpreting convergence histories and tangent
+subspaces. Improvement: continue documenting this explicitly and consider exposing
+the unsorted history or final permutation.
 
 ## 2. Numerical implementation
 
-The simple ODE integrator is classical fixed-step RK4 in `integrators.py`. Network and DDE paths use Euler or Heun inside `simulator.step.make_step_fn`, defaulting to Heun. Tangent vectors are propagated through the same one-step numerical map via `jax.jvp`, which is the correct discrete tangent map for the chosen integrator.
+Fixed-step ODE integration includes Euler, Heun, RK4, and RK6. Coupled-network stages
+now recompute coupling at each Runge-Kutta stage. Interpolated DDE stages likewise
+read delayed history at the stage time, and the ring-buffer write convention has a
+direct regression test. Tangent vectors are propagated through exactly the same
+numerical map as the primal state via `jax.jvp`.
 
-QR is performed every `renorm_every` raw steps. The implementation correctly takes `abs(diag(R))` before logging. It also propagates and renormalizes tangent vectors during the transient, which is a strong choice: it lets tangent bases align with Oseledets subspaces before accumulation and avoids transient tangent overflow.
+QR is applied every `renorm_every` raw outer steps. Tangent vectors are also
+renormalized during transients, allowing alignment toward Oseledets subspaces without
+unbounded growth. DDE transients cover at least one full ring-buffer cycle. The core
+now validates `renorm_every >= 1`, warns when float32 is used with x64 disabled, and
+offers eager-only `check_finite=True` diagnostics for non-finite histories.
 
-Criticism: `renorm_every` lacks runtime diagnostics for overflow, underflow, or zero diagonal entries in `R`. This matters because `log(0)` or very small diagonal values silently create `-inf` or unstable estimates, especially for strongly contracting directions and DDE buffer dimensions. Impact: High for long DDE/full-spectrum runs; Medium for top-k chaotic ODE use. Improvement: optionally check `jnp.isfinite(log_growth)` and expose a `check_finite` or warning mode; document practical selection of `renorm_every`.
+Adaptive ODE integration is available through the optional
+`lyapax.adaptive.diffrax_adaptive_step`. It uses a Diffrax solver with
+`scan_kind="lax"`, a PID controller, and a bounded dynamic `lax.while_loop` inside
+each outer `dt` interval. Tests compare it with published Lorenz behavior, fixed-step
+RK4, tolerance changes, an exact linear tangent action, and finite-difference
+parameter derivatives.
 
-Criticism: stiff systems are not supported beyond fixed-step explicit RK4/Heun/Euler. This matters because Lyapunov exponents of stiff systems require stable primal integration and stable tangent propagation. Impact: High for stiff ODE/DDE models; Low for the current Lorenz/Rossler/map validation set. Improvement: document non-stiff fixed-step scope and consider a Diffrax ODE step adapter for non-DDE stiff/adaptive workflows.
+Criticism: reaching adaptive `max_steps` silently returns the state reached before
+the requested outer interval is complete. `check_finite=True` cannot reliably detect
+a finite but truncated step, so the resulting exponent may be silently associated
+with the wrong elapsed time. Impact: High for difficult or overly tight integrations.
+Improvement: propagate completion status and raise in eager mode, or use a checked
+failure mechanism compatible with transformed execution.
 
-Criticism: only one DDE test checks two `dt` values; most ODE chaotic-flow tests use a single `dt`. This matters because finite-time Lyapunov estimates can look plausible while still reflecting time-discretization error. Impact: Medium. Improvement: add regression tests or examples that compare Lorenz/Rossler and key DDE cases across at least two `dt` values.
+Criticism: there is still no implicit/stiff solver path, and adaptive integration is
+ODE-only. Impact: High for stiff or multi-timescale systems; Low for the current
+Lorenz/Rossler/map validation set. Improvement: either document explicit-only scope
+as a firm boundary or add a tested implicit Diffrax adapter whose JVP behavior is
+verified independently.
 
-## 3. JAX implementation
+Criticism: broad finite checks occur after the complete run rather than at the QR
+block that first generated invalid growth. Impact: Medium for diagnosing long runs.
+Improvement: return block-level status or add checkify-based diagnostics if compatible
+with the intended JIT workflow.
 
-The implementation uses JAX idiomatically in the core numerical loops: `jax.jvp`, `jax.vmap`, and `jax.lax.scan` remove Python loops from the raw-step and renormalization loops. This is a strong design for XLA compilation and for partial spectra where `k << d`.
+## 3. JAX implementation and differentiability
 
-The code does not decorate public functions with `jax.jit`; instead it uses JAX primitives internally. This keeps the API simple and lets users choose when to JIT, but it also means default calls may include tracing/dispatch overhead. Parameter sweeps are implemented with `jax.vmap` in `sweep.py`.
+The numerical loops use `jax.jvp`, `jax.vmap`, `jax.lax.scan`, and JAX QR operations.
+This avoids dense Jacobian construction and makes leading-`k` spectra practical when
+`k << d`. Parameter sweeps use `vmap`; GPU execution follows normal JAX backend
+selection. Public functions are not themselves decorated with `jax.jit`, leaving
+compilation policy to callers and examples.
 
-Criticism: no `pmap`/`pjit` support or documented multi-device batching exists. This matters for large parameter sweeps or large networks. Impact: Low for current package maturity; Medium for high-throughput scientific workloads. Improvement: document that sweeps are single-device `vmap` today and add examples for `jit(vmap(...))`; consider `shard_map`/`pmap` later.
+The fixed-step engine can be differentiated through with `jax.grad` or `jax.jacfwd`.
+Tests establish the correct analytic derivative for a non-chaotic linear system.
+They also correctly characterize the crucial limitation: differentiating the finite-
+trajectory estimator through a chaotic trajectory inherits exponential trajectory
+sensitivity, so the returned gradient grows with horizon and is not a useful
+long-time Lyapunov sensitivity. Shadowing-based sensitivity is not implemented.
 
-Criticism: memory for full DDE spectra scales with `(d_state + d_buf) * k`, and full-spectrum DDE defaults to `k=d_total`. This matters because large horizons or networks can make the tangent matrix and QR expensive. Impact: High for delayed networks. Improvement: make examples default to small `k`, warn in docs/API when `k=None` for large DDE augmented dimensions, and include complexity notes.
+The adaptive adapter supports forward-mode differentiation (`jax.jacfwd`/`jax.jvp`)
+but not reverse mode because its data-dependent `lax.while_loop` cannot be replayed
+by JAX reverse-mode AD. Requiring `scan_kind="lax"` also couples this feature to a
+specific Diffrax solver construction detail, which is tested but should be watched
+across dependency updates.
 
-Criticism: `_read_delayed_coupling` has a Python loop over coupling variables when building a list inside traced code. The loop count is static and likely small, so this is not a correctness problem. Impact: Low to Medium if many coupling variables are used. Improvement: replace with a vectorized gather over the coupling-variable axis if multi-cvar systems become important.
+Criticism: `kaplan_yorke_dimension` converts JAX values to Python `float` and branches
+in Python. It is suitable eager post-processing but is not JIT-, `vmap`-, or gradient-
+friendly despite living in a JAX-native package. Impact: Low for its intended scalar
+reporting use; Medium if users expect composability. Improvement: either label it as
+eager host-side post-processing or implement a transform-compatible JAX variant.
+
+Criticism: no multi-device `pmap`/`shard_map` path or documented distributed sweep
+exists. Impact: Low at current maturity; Medium for large parameter studies.
+Improvement: first document single-device batching and compilation/timing practice;
+add distributed execution only with a representative workload and tests.
 
 ## 4. API design
 
-The core API is compact: `lyapunov_spectrum(step_fn, state0, dt, n_steps, k, renorm_every, t_transient, seed)` returns a `LyapunovResult` with `exponents`, `history`, and `times`. This is usable and extensible because users can provide arbitrary differentiable JAX step functions.
+The package now has coherent problem objects: `ODEProblem`, `DDEProblem`, and
+`Network`, built through `ode_problem`, `dde_problem`, `network_problem`, and
+`network_dde_problem`. These store `state0`, `dt`, and the prepared step function so
+users do not repeat dynamics configuration at the spectrum call. Lower-level direct
+step-function forms remain available.
 
-The coupling API is also extensible: a coupling is a plain callable `(cvar_state, weights, params) -> coupling`, and tests verify user-defined coupling functions. The network adapter cleanly bridges structured `(n_sv, n_nodes)` state to flat Lyapunov inputs.
+`LyapunovResult` now carries `exponents`, `history`, `times`, and a checkpoint.
+`LyapunovCheckpoint` and `DDECheckpoint` support continuation without restarting;
+the DDE checkpoint additionally preserves the ring buffer and its time index.
+`convergence_drift` summarizes tail movement and pairs naturally with chunked resume
+loops. The main classes, constructors, diagnostics, integrators, and Kaplan-Yorke
+helper are exported from `lyapax.__init__`; the earlier stale package docstring and
+minimal-export criticism is resolved.
 
-Criticism: `src/lyapax/__init__.py` is stale and says the tangent/QR engine is not implemented. This matters because package-level documentation contradicts the actual package state. Impact: Medium documentation/API trust issue. Improvement: update the module docstring and export the main public functions/classes.
+Criticism: checkpoints validate dimensions and tracked `k`, but do not identify the
+step function, parameters, `dt`, integrator, or renormalization cadence that produced
+them. A same-shaped checkpoint can therefore be resumed against a different system
+without an error. Impact: High for scientific reproducibility when checkpoints are
+persisted or routed programmatically. Improvement: store compatibility metadata in
+the checkpoint and validate all stable fields; provide an explicit override for
+advanced users who knowingly change dynamics.
 
-Criticism: public API exports are minimal; users must know submodule paths. This matters for usability and discoverability. Impact: Medium. Improvement: export `lyapunov_spectrum`, `lyapunov_spectrum_dde`, `LyapunovResult`, `rk4_step`, and common coupling builders from `lyapax.__init__` or document the intended import style.
+Criticism: `convergence_drift` compares only two cumulative estimates and relative
+drift becomes delicate near zero exponents. It is evidence of settling, not a robust
+statistical stopping rule, and CPU/GPU QR differences can change the chunk where a
+tight threshold first passes. Impact: Medium, especially for flows with a near-zero
+exponent. Improvement: document absolute/relative mixed tolerances, require several
+consecutive stable windows in examples, and avoid presenting backend-dependent early
+stopping as deterministic convergence.
 
-Criticism: type annotations use broad `Callable` and `dict` in several scientific extension points. This matters because shape and parameter-pytree expectations are central to correct JAX use. Impact: Low to Medium. Improvement: add shape-oriented docstrings consistently and consider Protocols or type aliases for `StepFn`, `CarryStepFn`, `CouplingFn`, and parameter pytrees.
+Criticism: callable extension points still use broad `Callable`/`dict` annotations.
+Impact: Low to Medium because shape and pytree contracts are scientifically relevant.
+Improvement: add type aliases or Protocols and consistent shape-oriented docstrings.
 
 ## 5. Software engineering
 
-The project has a clean `src/` layout, focused modules, and tests organized by feature. The code is readable and the core numerical functions are small enough to audit. Reuse of `_run_renorm_scan` avoids duplicated QR accumulation logic between ODE and DDE paths.
+The project has a clean `src/` layout, focused modules, feature-oriented tests, Ruff
+configuration, contribution/support files, and GitHub issue/PR templates. GitHub
+Actions runs tests on Python 3.11/3.12, Ruff, package build/metadata checks, and a
+warning-as-error Sphinx build. A separate trusted-publishing workflow builds and
+publishes releases to PyPI. These resolve the original review's missing-CI and
+missing-tooling concerns.
 
-Error handling exists for invalid `k`, invalid `n_steps`, and incompatible `renorm_every`. `Connectivity` validates shapes, nonnegative tract lengths, and positive speed.
+The core and DDE engines share QR accumulation through `_run_renorm_scan`. Validation
+now covers malformed `n_steps`, `k`, `renorm_every`, conflicting problem/direct
+arguments, resume incompatibilities, and adaptive/DDE misuse.
 
-Criticism: there is no visible CI workflow under `.github/workflows`. This matters because numerical packages need continuous validation across Python/JAX versions. Impact: High for open-source maintainability. Improvement: add GitHub Actions for lint/type/test on CPU with x64 enabled, plus optional GPU workflow if infrastructure is available.
+Criticism: `build_jax_dfun` still compiles model strings with `exec()`. This is
+acceptable for trusted local specifications but unsafe for untrusted input. Impact:
+Medium. Improvement: keep the trust boundary prominent; use a restricted expression
+parser before accepting remotely supplied specifications.
 
-Criticism: dynamic RHS generation uses `exec()` in `build_jax_dfun`. This is inherited/design-driven, but it matters for security and error diagnostics if users load untrusted model specs. Impact: Medium. Improvement: explicitly document that `dfun_str` is trusted code, validate allowed names more strictly, or replace string execution with an expression parser for public releases.
+Criticism: adaptive support relies on low-level Diffrax solver/controller behavior
+rather than its high-level solve API. Impact: Medium maintenance risk across Diffrax
+versions. Improvement: pin a tested compatibility range more narrowly or add a CI
+matrix entry for the oldest and newest supported Diffrax versions.
 
-Criticism: no linting, formatting, or type-check configuration is present. This matters for contributor consistency. Impact: Low to Medium. Improvement: add `ruff` and optionally `mypy`/`pyright` in dev dependencies and CI.
+## 6. Documentation and examples
 
-## 6. Documentation
+The README is no longer a stub. It includes installation, x64 guidance, a minimal
+Lorenz example, method/scope notes, DDE delay modes, CI/docs badges, and an examples
+table. Sphinx documentation includes background material on Lyapunov exponents, the
+implementation, validation, capabilities, performance, motivation, and benchmarks.
+Sphinx-Gallery executes runnable examples as part of CI.
 
-The notes are technically substantive. `notes/validation_systems.md` provides a serious validation plan with analytic references and structural invariants. `notes/milestones.md` captures design rationale and known risks.
+There are now twenty numbered demos (`00`-`19`), including the unified public API,
+DDE interpolation, GPU crossover, adaptive ODEs, convergence diagnostics, ODE and DDE
+resume, parameter differentiation, and Kaplan-Yorke dimension.
 
-The README is currently only a stub. It gives almost no installation, usage, API, or mathematical guidance. Examples exist, but documentation is not wired up.
+Criticism: README's examples table stops at `14_gpu_acceleration.py`; it omits demos
+15-19 and does not mention installing the `adaptive` extra in its development install
+commands. `CHANGELOG.md` also omits adaptive integration, convergence/resume,
+differentiability, and Kaplan-Yorke additions from `[Unreleased]`. Impact: Medium for
+discoverability and release accuracy. Improvement: update both before the next
+release and keep the table generated or checked against numbered example files.
 
-Criticism: README documentation is insufficient for users. This matters because the package exposes nontrivial numerical assumptions: fixed-step maps, x64, finite-time convergence, DDE discretization, and `renorm_every`. Impact: High for adoption and correct use. Improvement: add installation commands, a minimal Lorenz example, a map example, a DDE example, expected outputs, and warnings about convergence/precision.
+Criticism: `docs/api.rst` does not include `lyapax.adaptive`, so the optional adaptive
+API is absent from the generated API reference even though its demo is built. Impact:
+Medium. Improvement: add an Adaptive section with installation context.
 
-Criticism: mathematical documentation is mostly in internal notes and source comments, not public docs. This matters because users need to know what algorithm is implemented and what is not implemented. Impact: Medium. Improvement: create a docs page or README section titled "Method" explaining Benettin/QR, JVP tangent propagation, finite-time convergence, and fixed-delay DDE discretization.
+Criticism: the documentation build command in README installs only `[docs]`, while CI
+must install `[docs,adaptive]` because Sphinx-Gallery executes the adaptive demo.
+Impact: Medium; a clean local docs build can fail. Improvement: make the documented
+command match CI.
 
 ## 7. Performance
 
-For ODE/map systems, raw-step tangent propagation costs approximately `O(k)` JVPs per step plus QR every `renorm_every` steps. QR costs approximately `O(d k^2)` for partial spectra and `O(d^3)` when `k=d`. This is a good design for leading exponents in high-dimensional systems.
+For ordinary maps/ODEs, each raw step costs approximately `O(k)` JVPs, batched with
+`vmap`, plus QR every `renorm_every` steps. QR costs approximately `O(d k^2)` for a
+partial spectrum and `O(d^3)` for a full spectrum. For DDEs, replace `d` with the
+augmented `d_total = d_state + d_buffer`; long delays therefore make explicit small
+`k` essential.
 
-For DDEs, replace `d` with `d_total = d_state + d_buf`. This can be much larger than the physical state dimension, so top-k computation is essential.
+The repository now includes benchmark documentation and demos comparing matrix-free
+propagation with dense Jacobians, fixed integrator accuracy, parameter sweeps, and
+CPU/GPU crossover. This is a stronger basis than the original review had, but JAX
+compile time, warmup, asynchronous execution, device transfer, and shape specialization
+still require careful interpretation.
 
-Compared with dense NumPy/SciPy Jacobian methods, this JAX implementation should be more attractive for differentiable JAX models and partial spectra. Compared with DifferentialEquations.jl/ChaosTools.jl, it is less feature-rich: no adaptive ODE solvers, no mature DDE interpolation stack, and no broad ecosystem of validated algorithms. Compared with hand-coded variational equations, JAX JVP reduces derivative-maintenance risk.
-
-Criticism: no public benchmark results are considered in this review, and performance claims in tests are mostly generous smoke ceilings. This matters because XLA compile time, warmup, device transfer, and shape specialization affect real workloads. Impact: Medium. Improvement: add non-benchmark documentation with complexity formulas and separate reproducible benchmark reports outside the core tests.
-
-Criticism: public functions are not JIT-wrapped and no guidance is given on warmup/blocking. This matters because first-call timings can be misleading in JAX. Impact: Medium for performance users. Improvement: document `jax.jit(lambda ...: lyapunov_spectrum(...))` patterns where static arguments are handled correctly, and show `jax.block_until_ready` for timing.
+Criticism: adaptive integration nests an internal accept/reject loop inside each JVP
+and outer Lyapunov scan, so cost depends strongly on tolerances and system behavior.
+Current public benchmarks do not characterize this overhead. Impact: Medium.
+Improvement: report accepted/rejected internal step counts and benchmark adaptive
+versus fixed integration at matched exponent error, not merely matched nominal time.
 
 ## 8. Validation
 
-Validation is a major strength. Tests cover:
+Validation remains a major strength. The suite now covers:
 
-- linear ODE spectra against eigenvalues,
-- logistic and tent maps against `ln(2)`,
-- Hénon map sum against `ln|b|`,
-- Lorenz sum against constant divergence and largest exponent against a published value,
-- Rössler qualitative chaotic spectrum,
-- partial spectrum consistency,
-- JVP tangent propagation against dense `jax.jacfwd`,
-- linear networks against full Jacobian eigenvalues,
-- custom coupling,
-- DDE dominant roots using Lambert W,
-- DDE `dt` convergence for one scalar case,
-- Mackey-Glass qualitative chaos,
-- delayed linear networks against Lambert W formulas,
-- sweep equivalence against Python loops,
-- opt-in GPU smoke tests.
+- linear ODE spectra against eigenvalues;
+- logistic/tent maps against `ln(2)` and the Hénon sum against `ln|b|`;
+- Lorenz divergence/literature checks and Rössler qualitative behavior;
+- partial-spectrum consistency and JVP action against dense `jacfwd`;
+- linear networks, custom coupling, stage-accurate integration, and network scale;
+- scalar and network DDEs against Lambert-W references;
+- DDE ring-buffer timing and interpolated-history convergence order;
+- Mackey-Glass qualitative chaos and resumed DDE equivalence;
+- sweep equivalence against Python loops and opt-in GPU smoke tests;
+- adaptive Diffrax tangent action, tolerance behavior, RK4 agreement, and AD limits;
+- ODE/DDE checkpoint continuation and convergence-drift validation;
+- fixed-step parameter gradients in non-chaotic and chaotic regimes; and
+- Kaplan-Yorke edge cases, partial-spectrum guards, and the Lorenz reference value.
 
-Criticism: Rössler divergence identity described in `notes/validation_systems.md` is not implemented as a test; only qualitative ranges are checked. This matters because structural invariants are stronger than literature-range checks. Impact: Medium. Improvement: add a Rössler test computing the trajectory mean of `x` and checking `sum(lambda) = a - c + mean(x)`.
+Criticism: adaptive tests are skipped whenever the optional dependency is absent from
+the test environment; the main CI test job installs only `[dev]`, while Diffrax is
+installed only in the docs job. Consequently the dedicated adaptive pytest modules
+are not exercised as tests in the test matrix. Impact: High for a newly added optional
+numerical backend. Improvement: install `[dev,adaptive]` in one test job or add a
+separate adaptive job.
 
-Criticism: GPU tests are skipped by default and not CI-backed. This matters because GPU compatibility is claimed only when explicitly selected. Impact: Medium. Improvement: keep CPU default, but add a documented optional GPU CI/job or periodic manual validation record.
+Criticism: GPU tests remain opt-in and are not run by hosted CI. Impact: Medium for
+backend claims and resume/convergence reproducibility. Improvement: maintain a
+periodic GPU validation record or an optional self-hosted job, including CPU/GPU
+tolerance comparisons rather than bitwise expectations.
+
+Criticism: the Rössler divergence identity described in the validation plan is still
+not represented by a structural test; only qualitative ranges are checked. Impact:
+Medium. Improvement: verify `sum(lambda) = a - c + mean(x)` over the same trajectory.
 
 ## 9. Scientific reproducibility
 
-The tests force CPU and enable x64 in `tests/conftest.py`, which is good for repeatability. Random tangent bases are seeded through `seed`, making initial tangent bases reproducible for fixed shape/dtype/backend.
+Tests force CPU and enable x64, and random tangent bases are seeded. Runtime entry
+points warn when float32 is used while x64 is disabled. README guidance places the
+x64 configuration before JAX array creation. Resume checkpoints preserve numerical
+state, tangent bases, cumulative growth, elapsed time, and DDE history state.
 
-Dependencies are minimally specified in `pyproject.toml`: `jax>=0.10`, `numpy>=1.23`, dev extras `pytest>=7`, `scipy>=1.10`. There is no lockfile.
+Dependencies remain broad (`jax>=0.10`, `numpy>=1.23`; Diffrax is optional) and there
+is no lockfile. This is reasonable for package installation but insufficient by itself
+for exact computational reproduction across JAX/XLA/backend versions. CPU and GPU QR
+and reductions are not expected to be bitwise identical, and chaotic trajectories
+amplify small differences.
 
-Criticism: x64 is required by the tests and notes, but package imports do not enable or enforce it. This matters because ordinary users may run in JAX float32 defaults and get degraded long-horizon exponents. Impact: High. Improvement: document required `jax_enable_x64=True`, add a runtime warning when `state0.dtype` is float32, or provide an explicit setup helper.
+Criticism: the project records locally verified JAX/Diffrax versions in comments but
+does not publish a tested dependency matrix or reproducible environment file. Impact:
+Medium. Improvement: record versions with benchmark/scientific outputs and test lower
+bounds plus a current dependency set in CI.
 
-Criticism: dependency versions are broad and unpinned. This matters because JAX behavior and linear algebra numerics can change across versions/backends. Impact: Medium. Improvement: keep broad install requirements but add a tested-version matrix or lockfile for reproducible development.
+Criticism: checkpoints are in-memory NamedTuple-like pytrees without an explicit,
+versioned serialization contract. Impact: Medium for long simulations resumed across
+processes or package upgrades. Improvement: define a stable checkpoint schema with
+package version and compatibility metadata before encouraging persistent checkpoints.
 
 ## 10. Strengths
 
-- Scientifically appropriate Benettin/QR implementation for differentiable maps and fixed-step ODE numerical maps.
-- Tangent propagation uses `jvp`/`vmap`, avoiding dense Jacobians for partial spectra.
-- DDE implementation correctly differentiates the augmented `(state, buffer)` map rather than ignoring delayed-state sensitivities.
-- Validation suite is unusually strong for an early scientific package.
-- Running convergence history is returned, which supports finite-time diagnostics.
-- Coupling API is open and tested with user-defined functions.
-- Tests pass in the current environment.
+- Scientifically appropriate Benettin/QR implementation for differentiable JAX maps,
+  fixed/adaptive explicit ODE maps, networks, and fixed-delay DDE discretizations.
+- Matrix-free `jvp`/`vmap` tangent propagation with practical partial spectra.
+- Higher-order uniform-delay DDE history interpolation with direct timing/order tests.
+- Coherent problem-object API plus lower-level step-function escape hatches.
+- Inspectable convergence history, diagnostics, and resumable ODE/DDE computation.
+- Candid, tested differentiability limits rather than broad AD claims.
+- Kaplan-Yorke post-processing with a partial-spectrum correctness guard.
+- Strong validation, public documentation, CI, packaging, and contribution scaffolding.
 
 ## 11. Weaknesses
 
-- README and public documentation are far behind the implementation.
-- x64 requirement is enforced only in tests, not in normal package use.
-- Fixed-step explicit integration limits applicability to stiff systems.
-- DDE support is finite-dimensional, integer-delay, and fixed-step only.
-- No CI workflow is present.
-- Package-level `__init__.py` is stale and does not expose the useful API.
+- Adaptive `max_steps` exhaustion can silently produce a truncated outer step.
+- Adaptive tests are skipped in the main CI test matrix.
+- No stiff/implicit ODE solver and no adaptive DDE integration.
+- Uniform-delay interpolation does not extend to per-edge heterogeneous delays.
+- Checkpoint compatibility is not tied to dynamics, parameters, `dt`, or package version.
+- Chaotic long-horizon parameter sensitivities need shadowing methods, which are absent.
+- README, changelog, and API index lag behind demos/features 15-19.
 
 ## 12. Major concerns
 
-1. Bug/documentation issue: stale package docstring in `__init__.py`.
-   Why it matters: it tells users the implemented Lyapunov engine does not exist.
-   Impact: Medium.
-   Improvement: update the docstring and public exports.
+1. Numerical correctness: adaptive `max_steps` exhaustion is silent.
+   Why it matters: `lyapunov_spectrum` still advances its elapsed-time denominator by
+   the full outer `dt`, even if the adaptive step returned a state from an earlier time.
+   Impact: High. Improvement: expose and enforce successful completion of every outer
+   interval.
 
-2. Numerical issue: x64 is not enforced or warned about outside tests.
-   Why it matters: long Lyapunov averages are sensitive to precision.
-   Impact: High.
-   Improvement: add documentation plus runtime dtype warnings or explicit x64 setup guidance.
+2. Validation coverage: adaptive tests do not run in the main CI pytest jobs.
+   Why it matters: the adapter depends on low-level, version-sensitive Diffrax details.
+   Impact: High. Improvement: add an adaptive-enabled CI test job.
 
-3. Numerical limitation: DDE delay rounding is central but not surfaced in the public API.
-   Why it matters: users may interpret rounded-delay spectra as spectra for the exact physical delay.
-   Impact: High.
-   Improvement: return or expose `tau_steps`, `tau_eff`, and convergence guidance.
+3. Reproducibility: resume compatibility checks are shape-based only.
+   Why it matters: a checkpoint can silently continue under different dynamics or
+   numerical settings while looking structurally valid. Impact: High. Improvement:
+   include and validate problem/integrator metadata.
 
-4. Software-engineering issue: no CI.
-   Why it matters: regressions in numerical code can be subtle and backend/version dependent.
-   Impact: High.
-   Improvement: add CPU/x64 GitHub Actions running the full test suite.
+4. Scope limitation: naive gradients are not long-time chaotic sensitivities.
+   Why it matters: a finite gradient can look authoritative even while diverging with
+   horizon. Impact: High for optimization/control claims; Low for validated linear and
+   short non-chaotic examples. Improvement: retain prominent warnings and implement a
+   shadowing method only if chaotic sensitivity becomes a core goal.
 
 ## 13. Minor suggestions
 
-- Style issue: several source comments refer to milestone history; useful for development, but verbose for a public package. Impact: Low. Improvement: move long design history into docs and keep code comments focused on current invariants.
-- Documentation issue: README should link examples by task, not only say they exist. Impact: Medium. Improvement: add a short examples index.
-- Enhancement opportunity: add a convergence helper that summarizes last-window drift in `history`. Impact: Low to Medium. Improvement: implement a small utility that reports relative/absolute finite-time change.
-- API issue: `renorm_every <= 0` is not explicitly checked. Impact: Low because modulo/scan errors will occur, but messages will be poor. Improvement: add a direct validation error.
+- Add `lyapax.adaptive` to the generated API reference.
+- Update README's example table through demo 19 and document `[docs,adaptive]` builds.
+- Update the unreleased changelog for convergence/resume, adaptive ODEs, AD findings,
+  and Kaplan-Yorke dimension.
+- State explicitly that `kaplan_yorke_dimension` is eager host-side post-processing.
+- Add mixed absolute/relative convergence thresholds for near-zero exponents.
+- Report the active JAX backend in CPU/GPU-sensitive convergence demos.
+- Replace broad callable annotations with reusable shape/pytree contracts.
 
 ## 14. Possible future improvements
 
-- Add Diffrax adapter support for ODEs, including adaptive and stiff solvers where appropriate.
-- Add public docs with derivations, algorithm references, and limitations.
-- Add optional finite checks and convergence diagnostics.
-- Add vectorized per-coupling-variable delayed gather if multi-cvar delayed systems become common.
-- Add pmap/pjit examples for large parameter sweeps.
-- Add richer DDE interpolation support if exact non-integer delays become a project goal.
-- Add package exports, API docs, and type Protocols for extension callables.
+- Fail safely on incomplete adaptive outer steps and expose step statistics.
+- Add adaptive-enabled and periodic GPU CI coverage.
+- Add checkpoint metadata and a versioned persistence format.
+- Add implicit ODE support only after verifying differentiable tangent propagation.
+- Extend interpolated history to heterogeneous delays only with a defined edge-aware API.
+- Add shadowing-based sensitivities for genuinely chaotic parameter gradients.
+- Add multi-device sweep examples when a representative workload warrants them.
+- Make Kaplan-Yorke post-processing transform-compatible if batched use becomes common.
 
 ## 15. Overall assessment
 
-`lyapax` is scientifically credible for its current intended scope: Lyapunov exponents of differentiable JAX maps, fixed-step ODE discretizations, networks, and fixed-grid DDE discretizations. The core Benettin/QR machinery is implemented correctly, tangent propagation is modern and efficient for partial spectra, and the validation suite is much stronger than the public-facing documentation.
+`lyapax` has moved from a credible early core into a coherent scientific package. It
+now combines matrix-free Benettin/QR propagation with problem objects, corrected and
+higher-order DDE history handling, adaptive explicit ODE integration, convergence
+diagnostics, resumable runs, parameter-differentiation guidance, Kaplan-Yorke
+dimension, public docs, and CI. Several of the original review's largest usability and
+engineering concerns are resolved.
 
-The main risks are not in the central QR/JVP algorithm. They are in user-facing reproducibility and scope clarity: x64 must be made explicit, fixed-step and integer-delay limitations must be documented prominently, and CI should be added. With those addressed, this would be a solid early-stage open-source scientific package.
+The main remaining risk is concentrated rather than architectural: the adaptive
+adapter must not silently return incomplete steps, and its version-sensitive behavior
+needs direct CI coverage. Checkpoint provenance and backend-sensitive convergence
+criteria also need tightening before resume-driven workflows are presented as fully
+reproducible across environments. Within the documented deterministic, explicit,
+fixed-delay scope, the scientific implementation and validation are strong.
