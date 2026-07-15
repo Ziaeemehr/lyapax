@@ -1,17 +1,17 @@
 # Review of `lyapax`
 
 Scope: this review covers the package code, tests, examples, public documentation,
-notes, CI, and packaging metadata in this repository at commit `9c72dad` (2026-07-15).
+notes, CI, and packaging metadata in this repository, most recently amended on
+2026-07-15 to address the adaptive `max_steps`, checkpoint-resume, adaptive CI
+coverage, and documentation-lag findings from the prior pass (commit `9c72dad`).
 The `benchmarks/` directory is considered only where its published results affect
 user-facing claims; benchmark implementation details are otherwise excluded.
 
-Validation run: `PYTHONPATH=src python3 -m pytest` collected 72 tests and completed
-with `69 passed, 4 skipped, 1 failed` in 77.85 s. The four skips are two GPU tests
-and two Diffrax-dependent test modules unavailable in the base environment. The
-single failure is the installed-distribution metadata assertion in
-`test_package_version_is_single_sourced`; the source-tree run deliberately used
-`PYTHONPATH` because `lyapax` was not installed in that environment. CI installs
-the package before testing and covers Python 3.11 and 3.12.
+Validation run: `python -m pytest -v` (installed with the `dev,adaptive` extras,
+matching CI's updated test job) collected 84 tests and completed with `82 passed,
+2 skipped` in ~90 s. The two skips are GPU tests, opt-in via `JAX_PLATFORMS=cuda`;
+the Diffrax-dependent adaptive test modules now run rather than skip, since CI's
+`test` job installs the `adaptive` extra. CI covers Python 3.11 and 3.12.
 
 ## 1. Scientific correctness
 
@@ -75,12 +75,11 @@ each outer `dt` interval. Tests compare it with published Lorenz behavior, fixed
 RK4, tolerance changes, an exact linear tangent action, and finite-difference
 parameter derivatives.
 
-Criticism: reaching adaptive `max_steps` silently returns the state reached before
-the requested outer interval is complete. `check_finite=True` cannot reliably detect
-a finite but truncated step, so the resulting exponent may be silently associated
-with the wrong elapsed time. Impact: High for difficult or overly tight integrations.
-Improvement: propagate completion status and raise in eager mode, or use a checked
-failure mechanism compatible with transformed execution.
+Resolved: reaching adaptive `max_steps` now raises via `equinox.error_if` (works
+eagerly and under `jax.jit`/`jax.vmap`) instead of silently returning a truncated
+state, closing the exponent/elapsed-time mismatch this previously risked. Covered
+by `test_max_steps_exhaustion_raises` (`tests/test_adaptive_ode.py`), which forces
+the condition deterministically with `max_steps=0`.
 
 Criticism: there is still no implicit/stiff solver path, and adaptive integration is
 ODE-only. Impact: High for stiff or multi-timescale systems; Low for the current
@@ -114,11 +113,9 @@ by JAX reverse-mode AD. Requiring `scan_kind="lax"` also couples this feature to
 specific Diffrax solver construction detail, which is tested but should be watched
 across dependency updates.
 
-Criticism: `kaplan_yorke_dimension` converts JAX values to Python `float` and branches
-in Python. It is suitable eager post-processing but is not JIT-, `vmap`-, or gradient-
-friendly despite living in a JAX-native package. Impact: Low for its intended scalar
-reporting use; Medium if users expect composability. Improvement: either label it as
-eager host-side post-processing or implement a transform-compatible JAX variant.
+Resolved: `kaplan_yorke_dimension`'s docstring now states explicitly that it is
+eager, host-side post-processing (Python-`float` branching), not `jit`/`vmap`/
+`grad`-compatible, rather than leaving that implicit in its implementation.
 
 Criticism: no multi-device `pmap`/`shard_map` path or documented distributed sweep
 exists. Impact: Low at current maturity; Medium for large parameter studies.
@@ -141,21 +138,31 @@ loops. The main classes, constructors, diagnostics, integrators, and Kaplan-York
 helper are exported from `lyapax.__init__`; the earlier stale package docstring and
 minimal-export criticism is resolved.
 
-Criticism: checkpoints validate dimensions and tracked `k`, but do not identify the
-step function, parameters, `dt`, integrator, or renormalization cadence that produced
-them. A same-shaped checkpoint can therefore be resumed against a different system
-without an error. Impact: High for scientific reproducibility when checkpoints are
-persisted or routed programmatically. Improvement: store compatibility metadata in
-the checkpoint and validate all stable fields; provide an explicit override for
-advanced users who knowingly change dynamics.
+Partially resolved: `LyapunovCheckpoint`/`DDECheckpoint` now carry `dt` and
+`lyapunov_spectrum`/`lyapunov_spectrum_dde` raise on `resume=` if it does not match
+the resuming call's `dt` (`dt` was chosen because it is the one stable field cheap
+to check without hashing an opaque JAX closure -- for a DDE it also implicitly
+guards the grid-snapped delay/horizon, which is derived from `dt`). Covered by
+`test_resume_rejects_dt_mismatch` in both `tests/test_lyapunov_core.py` and
+`tests/test_dde.py`.
 
-Criticism: `convergence_drift` compares only two cumulative estimates and relative
-drift becomes delicate near zero exponents. It is evidence of settling, not a robust
-statistical stopping rule, and CPU/GPU QR differences can change the chunk where a
-tight threshold first passes. Impact: Medium, especially for flows with a near-zero
-exponent. Improvement: document absolute/relative mixed tolerances, require several
-consecutive stable windows in examples, and avoid presenting backend-dependent early
-stopping as deterministic convergence.
+Criticism (remaining): the step function, parameters, integrator, and
+renormalization cadence are still not identified or validated on resume -- only
+`dt` and the tracked dimensions are. A same-shaped, same-`dt` checkpoint can
+still be resumed against a different `rhs`/parameters without an error. Impact:
+Medium-High for scientific reproducibility when checkpoints are persisted or
+routed programmatically (down from High now that the most likely accidental
+mismatch -- a different `dt` -- is caught). Improvement: an explicit, caller-set
+`tag`/version field would close the rest of this gap without needing to identify
+an arbitrary Python closure; add only if persisted/routed checkpoints become an
+actual workflow, per `notes`'s general bias against speculative API surface.
+
+Resolved: `convergence_drift`'s docstring now recommends mixing absolute and
+relative tolerance (pointing at `ConvergenceDrift.relative`'s near-zero-exponent
+caveat), requiring several consecutive converged chunks rather than trusting a
+single pass, and notes that CPU/GPU QR differences can shift which chunk a tight
+`tol` first passes on. `examples/16_convergence_drift.py` now also prints the
+active JAX backend for the same reason.
 
 Criticism: callable extension points still use broad `Callable`/`dict` annotations.
 Impact: Low to Medium because shape and pytree contracts are scientifically relevant.
@@ -196,21 +203,17 @@ There are now twenty numbered demos (`00`-`19`), including the unified public AP
 DDE interpolation, GPU crossover, adaptive ODEs, convergence diagnostics, ODE and DDE
 resume, parameter differentiation, and Kaplan-Yorke dimension.
 
-Criticism: README's examples table stops at `14_gpu_acceleration.py`; it omits demos
-15-19 and does not mention installing the `adaptive` extra in its development install
-commands. `CHANGELOG.md` also omits adaptive integration, convergence/resume,
-differentiability, and Kaplan-Yorke additions from `[Unreleased]`. Impact: Medium for
-discoverability and release accuracy. Improvement: update both before the next
-release and keep the table generated or checked against numbered example files.
+Resolved: README's examples table now lists demos 15-19, its development-install
+block adds `pip install -e ".[adaptive]"`, and `CHANGELOG.md`'s `[Unreleased]`
+section now records adaptive integration, convergence/resume, differentiability
+findings, and the Kaplan-Yorke dimension. Remaining: the table is still
+hand-maintained (not generated or checked against `examples/`), so it can drift
+again -- Impact Low, not worth a generator for twenty entries at this stage.
 
-Criticism: `docs/api.rst` does not include `lyapax.adaptive`, so the optional adaptive
-API is absent from the generated API reference even though its demo is built. Impact:
-Medium. Improvement: add an Adaptive section with installation context.
+Resolved: `docs/api.rst` now has an Adaptive section (`lyapax.adaptive`, with a
+note on the `adaptive` extra); confirmed by a clean `sphinx-build -b html -W`.
 
-Criticism: the documentation build command in README installs only `[docs]`, while CI
-must install `[docs,adaptive]` because Sphinx-Gallery executes the adaptive demo.
-Impact: Medium; a clean local docs build can fail. Improvement: make the documented
-command match CI.
+Resolved: README's docs-build command now installs `[docs,adaptive]`, matching CI.
 
 ## 7. Performance
 
@@ -247,24 +250,24 @@ Validation remains a major strength. The suite now covers:
 - sweep equivalence against Python loops and opt-in GPU smoke tests;
 - adaptive Diffrax tangent action, tolerance behavior, RK4 agreement, and AD limits;
 - ODE/DDE checkpoint continuation and convergence-drift validation;
-- fixed-step parameter gradients in non-chaotic and chaotic regimes; and
-- Kaplan-Yorke edge cases, partial-spectrum guards, and the Lorenz reference value.
+- fixed-step parameter gradients in non-chaotic and chaotic regimes;
+- Kaplan-Yorke edge cases, partial-spectrum guards, and the Lorenz reference value; and
+- adaptive `max_steps` exhaustion and ODE/DDE resume-`dt`-mismatch rejection.
 
-Criticism: adaptive tests are skipped whenever the optional dependency is absent from
-the test environment; the main CI test job installs only `[dev]`, while Diffrax is
-installed only in the docs job. Consequently the dedicated adaptive pytest modules
-are not exercised as tests in the test matrix. Impact: High for a newly added optional
-numerical backend. Improvement: install `[dev,adaptive]` in one test job or add a
-separate adaptive job.
+Resolved: `ci.yml`'s `test` job now installs `[dev,adaptive]` (was `[dev]`), so the
+dedicated adaptive pytest modules run as tests on every push/PR across Python
+3.11/3.12, not only implicitly via the docs job's Sphinx-Gallery execution.
 
 Criticism: GPU tests remain opt-in and are not run by hosted CI. Impact: Medium for
 backend claims and resume/convergence reproducibility. Improvement: maintain a
 periodic GPU validation record or an optional self-hosted job, including CPU/GPU
 tolerance comparisons rather than bitwise expectations.
 
-Criticism: the Rössler divergence identity described in the validation plan is still
-not represented by a structural test; only qualitative ranges are checked. Impact:
-Medium. Improvement: verify `sum(lambda) = a - c + mean(x)` over the same trajectory.
+Correction (prior review pass was stale): the Rössler divergence identity is
+represented by a structural test -- `test_rossler_sum_matches_divergence_identity`
+in `tests/test_lyapunov_core.py` verifies `sum(lambda) = a - c + mean(x)` over the
+same post-transient window the exponent run itself uses. No action needed; this
+item should not have appeared as an open criticism.
 
 ## 9. Scientific reproducibility
 
@@ -303,58 +306,59 @@ package version and compatibility metadata before encouraging persistent checkpo
 
 ## 11. Weaknesses
 
-- Adaptive `max_steps` exhaustion can silently produce a truncated outer step.
-- Adaptive tests are skipped in the main CI test matrix.
 - No stiff/implicit ODE solver and no adaptive DDE integration.
 - Uniform-delay interpolation does not extend to per-edge heterogeneous delays.
-- Checkpoint compatibility is not tied to dynamics, parameters, `dt`, or package version.
+- Checkpoint resume validates `dt` but not the step function, parameters, integrator,
+  renormalization cadence, or package version.
 - Chaotic long-horizon parameter sensitivities need shadowing methods, which are absent.
-- README, changelog, and API index lag behind demos/features 15-19.
+- Callable extension points still use broad `Callable`/`dict` annotations.
+- No published tested dependency matrix (only single verified versions in
+  `pyproject.toml` comments) and no periodic/hosted GPU CI.
 
 ## 12. Major concerns
 
-1. Numerical correctness: adaptive `max_steps` exhaustion is silent.
-   Why it matters: `lyapunov_spectrum` still advances its elapsed-time denominator by
-   the full outer `dt`, even if the adaptive step returned a state from an earlier time.
-   Impact: High. Improvement: expose and enforce successful completion of every outer
-   interval.
+1. Reproducibility: resume compatibility checks now cover `dt` but not
+   step-function/parameter/integrator identity.
+   Why it matters: a same-shaped, same-`dt` checkpoint can still silently continue
+   under different dynamics or parameters while looking valid. Impact: Medium-High
+   for scientific reproducibility when checkpoints are persisted or routed
+   programmatically. Improvement: an explicit caller-set tag/version field, added
+   only if persisted/routed checkpoints become an actual workflow.
 
-2. Validation coverage: adaptive tests do not run in the main CI pytest jobs.
-   Why it matters: the adapter depends on low-level, version-sensitive Diffrax details.
-   Impact: High. Improvement: add an adaptive-enabled CI test job.
-
-3. Reproducibility: resume compatibility checks are shape-based only.
-   Why it matters: a checkpoint can silently continue under different dynamics or
-   numerical settings while looking structurally valid. Impact: High. Improvement:
-   include and validate problem/integrator metadata.
-
-4. Scope limitation: naive gradients are not long-time chaotic sensitivities.
+2. Scope limitation: naive gradients are not long-time chaotic sensitivities.
    Why it matters: a finite gradient can look authoritative even while diverging with
    horizon. Impact: High for optimization/control claims; Low for validated linear and
    short non-chaotic examples. Improvement: retain prominent warnings and implement a
    shadowing method only if chaotic sensitivity becomes a core goal.
 
+Resolved since the prior pass: adaptive `max_steps` exhaustion now raises instead of
+silently truncating (`lyapax.adaptive`, via `equinox.error_if`); adaptive tests now
+run in the main CI test matrix (`ci.yml`'s `test` job installs `[dev,adaptive]`); and
+checkpoint resume now validates `dt`. See the inline "Resolved"/"Partially resolved"
+notes in sections 2, 4, and 8 above for what each fix does and does not cover.
+
 ## 13. Minor suggestions
 
-- Add `lyapax.adaptive` to the generated API reference.
-- Update README's example table through demo 19 and document `[docs,adaptive]` builds.
-- Update the unreleased changelog for convergence/resume, adaptive ODEs, AD findings,
-  and Kaplan-Yorke dimension.
-- State explicitly that `kaplan_yorke_dimension` is eager host-side post-processing.
-- Add mixed absolute/relative convergence thresholds for near-zero exponents.
-- Report the active JAX backend in CPU/GPU-sensitive convergence demos.
 - Replace broad callable annotations with reusable shape/pytree contracts.
+- Keep README's examples table in sync with `examples/` as new demos are added (still
+  hand-maintained, not generated or checked).
+- Record a tested dependency matrix (not just a single verified version) alongside
+  benchmark/scientific outputs.
 
 ## 14. Possible future improvements
 
-- Fail safely on incomplete adaptive outer steps and expose step statistics.
-- Add adaptive-enabled and periodic GPU CI coverage.
-- Add checkpoint metadata and a versioned persistence format.
+- Add an explicit checkpoint tag/version field once persisted or programmatically
+  routed checkpoints become an actual workflow (dynamics/parameter identity is the
+  remaining resume-safety gap; `dt` is already checked).
+- Add periodic or self-hosted GPU CI coverage.
 - Add implicit ODE support only after verifying differentiable tangent propagation.
 - Extend interpolated history to heterogeneous delays only with a defined edge-aware API.
 - Add shadowing-based sensitivities for genuinely chaotic parameter gradients.
 - Add multi-device sweep examples when a representative workload warrants them.
 - Make Kaplan-Yorke post-processing transform-compatible if batched use becomes common.
+- Characterize adaptive-integration overhead (accepted/rejected step counts) in the
+  benchmark suite, and benchmark adaptive vs. fixed integration at matched exponent
+  error rather than matched nominal time.
 
 ## 15. Overall assessment
 
@@ -363,11 +367,16 @@ now combines matrix-free Benettin/QR propagation with problem objects, corrected
 higher-order DDE history handling, adaptive explicit ODE integration, convergence
 diagnostics, resumable runs, parameter-differentiation guidance, Kaplan-Yorke
 dimension, public docs, and CI. Several of the original review's largest usability and
-engineering concerns are resolved.
+engineering concerns are resolved, including this pass's three previously "High
+impact" findings: adaptive `max_steps` truncation now raises rather than silently
+corrupting elapsed-time accounting, adaptive tests run in the main CI matrix rather
+than only implicitly through the docs build, and checkpoint resume validates `dt`.
 
-The main remaining risk is concentrated rather than architectural: the adaptive
-adapter must not silently return incomplete steps, and its version-sensitive behavior
-needs direct CI coverage. Checkpoint provenance and backend-sensitive convergence
-criteria also need tightening before resume-driven workflows are presented as fully
-reproducible across environments. Within the documented deterministic, explicit,
-fixed-delay scope, the scientific implementation and validation are strong.
+The main remaining risk is narrower than before: checkpoint resume still cannot tell
+whether a same-shaped, same-`dt` checkpoint is being resumed against the same
+dynamics and parameters, since that would require identifying an opaque JAX closure
+rather than comparing a stored value. That gap, plus backend-sensitive convergence
+criteria, should be closed (or explicitly accepted as a documented limitation) before
+resume-driven workflows are presented as fully reproducible across environments and
+processes. Within the documented deterministic, explicit, fixed-delay scope, the
+scientific implementation and validation are strong.
