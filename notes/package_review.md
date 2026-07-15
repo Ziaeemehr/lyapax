@@ -356,9 +356,25 @@ notes in sections 2, 4, and 8 above for what each fix does and does not cover.
 - Add shadowing-based sensitivities for genuinely chaotic parameter gradients.
 - Add multi-device sweep examples when a representative workload warrants them.
 - Make Kaplan-Yorke post-processing transform-compatible if batched use becomes common.
-- Characterize adaptive-integration overhead (accepted/rejected step counts) in the
-  benchmark suite, and benchmark adaptive vs. fixed integration at matched exponent
-  error rather than matched nominal time.
+
+Resolved: adaptive-integration overhead is now characterized at matched exponent
+error (not matched nominal `dt`/`rtol`) across small (Lorenz), large (`d=1500-3000`),
+GPU, and relaxation-oscillator (Van der Pol) cases -- adaptive integration is 2-4x
+slower than fixed-step `rk4`/`rk6` in every case tested, narrowing toward parity only
+at large `d`. Documented in `docs/background/capabilities.md`'s "Adaptive integration
+is not a speed optimization" section, referenced from `lyapax.adaptive`'s module
+docstring. Separately, while investigating this the `ValueError` raised for passing
+an adaptive integrator to a network/DDE problem was found to say "not supported for
+DDEs" while actually firing for any `network_problem` (delayed or not) -- corrected
+to describe the real restriction (adaptive integration works only through a single,
+uncoupled `ode_problem`), with a new regression test locking in the non-delayed-network
+case specifically.
+
+Also resolved (unprompted cleanup, not itself a review finding): docstrings across
+`src/lyapax/` no longer reference the repository's internal `notes/` directory, which
+is not part of the published package or docs and was therefore an unusable pointer for
+anyone reading the installed package or hosted docs -- those references now point to
+proper Sphinx cross-references (`:ref:`/`:doc:`) instead.
 
 ## 15. Overall assessment
 

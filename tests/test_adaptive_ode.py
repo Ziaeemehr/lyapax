@@ -21,9 +21,18 @@ diffrax = pytest.importorskip("diffrax")
 
 jax.config.update("jax_enable_x64", True)
 
-from lyapax import dde_problem, lyapunov_spectrum, ode_problem, systems  # noqa: E402
+from lyapax import (  # noqa: E402
+    dde_problem,
+    lyapunov_spectrum,
+    network_problem,
+    ode_problem,
+    systems,
+)
 from lyapax.adaptive import diffrax_adaptive_step  # noqa: E402
+from lyapax.coupling import linear_coupling  # noqa: E402
 from lyapax.integrators import rk4_step  # noqa: E402
+from lyapax.network import Network  # noqa: E402
+from lyapax.simulator import ModelSpec, Parameter, StateVar, build_jax_dfun  # noqa: E402
 
 
 def _lorenz_adaptive_result(rtol, atol, dt=0.1, n_steps=1_000, renorm_every=1):
@@ -131,15 +140,39 @@ def test_dde_rejects_adaptive_integrator():
     adaptive ODE integrator there isn't caught just by "no such
     parameter". Confirms the explicit guard in
     lyapax.simulator.step.make_step_fn raises a clear, targeted error
-    instead of relying on an incidental arity-mismatch TypeError --
-    M9.3's "clear ValueError, not silent fixed-step fallback."
+    instead of relying on an incidental arity-mismatch TypeError.
     """
     def rhs_delayed(state, delayed, params):
         return -state + delayed
 
     integrator = diffrax_adaptive_step(rtol=1e-6, atol=1e-9)
-    with pytest.raises(ValueError, match="not supported for DDEs"):
+    with pytest.raises(ValueError, match="not for network_problem"):
         dde_problem(
             rhs_delayed, state0=jnp.array([1.0]), tau=0.3, dt=0.05,
             integrator=integrator,
+        )
+
+
+def test_network_rejects_adaptive_integrator_even_without_delays():
+    """network_problem (has_delays=False, no DDE involved at all) also
+    goes through lyapax.simulator.step.make_step_fn, whose adaptive-
+    integrator guard fires unconditionally -- not just for DDEs. This
+    isn't a workaround-able edge case: the network step-function calling
+    convention (coupling recomputed per RK stage via a coupling_at
+    callback) has no adaptive-integrator equivalent, so this is a real
+    scope limit (adaptive integration works only through ode_problem),
+    not an accidental DDE-only guard.
+    """
+    model = ModelSpec(
+        name="linear_node", state_variables=(StateVar("x", default_init=0.0),),
+        parameters=(Parameter("gamma", -1.0),), cvar=("x",),
+        dfun_str={"x": "gamma * x + c"},
+    )
+    dfun = build_jax_dfun(model)
+    network = Network(weights=jnp.zeros((2, 2)), cvar_indices=model.cvar_indices)
+    integrator = diffrax_adaptive_step(rtol=1e-6, atol=1e-9)
+    with pytest.raises(ValueError, match="not for network_problem"):
+        network_problem(
+            dfun, network, linear_coupling(a=1.0, b=0.0), params={"gamma": -1.0},
+            state0=jnp.array([0.3, -0.1]), dt=0.05, integrator=integrator,
         )

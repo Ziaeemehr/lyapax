@@ -1,9 +1,9 @@
-"""Adaptive-step ODE integration via ``diffrax`` (M9, ``notes/milestones.md``).
+"""Adaptive-step ODE integration via ``diffrax``.
 
 ODE-only: ``diffrax`` has no DDE support
 (`patrick-kidger/diffrax#406 <https://github.com/patrick-kidger/diffrax/issues/406>`_,
 open since April 2024, re-checked 2026-07-07) -- ``lyapax.dde`` stays
-fixed-step, see that module and ``notes/open_issues.md`` item 5.
+fixed-step, see that module.
 
 Not imported by ``lyapax``'s top-level ``__init__``, since ``diffrax`` is an
 optional dependency (the ``adaptive`` extra) -- import this module directly:
@@ -29,8 +29,7 @@ cost (large state dimension) together; not tested, and not assumed here.
 Reach for this integrator for **tolerance-driven accuracy control** (no
 more manual ``dt``-convergence sweeps) and for its being the only
 forward-mode-differentiable adaptive option here, not for throughput. See
-``notes/adaptive_speed_investigation.md`` for the full methodology and
-numbers.
+:ref:`adaptive-integration-speed` for a summary of these findings.
 
 Design: ``diffrax_adaptive_step(...)`` returns a builder with the same
 ``(rhs, dt) -> step_fn`` signature as the fixed-step builders in
@@ -68,7 +67,7 @@ built on, and two findings that shaped this implementation:
   a ``lax.while_loop`` with a dynamic trip count backward at all -- a
   fundamental JAX limitation, not a diffrax quirk or a precision issue.
   Differentiating a Lyapunov exponent w.r.t. a handful of system parameters
-  (``notes/open_issues.md`` item 6's goal) still works, but requires
+  still works, but requires
   ``jax.jacfwd``/``jax.jvp`` (forward-mode over the parameter), not
   ``jax.grad``. Confirmed empirically: ``jax.grad`` raises
   ``ValueError: Reverse-mode differentiation does not work for

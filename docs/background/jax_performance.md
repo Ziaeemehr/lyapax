@@ -45,8 +45,7 @@ In practice you often don't need to `jax.jit` the call yourself: the
 already get compiled by JAX on first use with a given set of static shapes
 and are cached across subsequent calls with the same shapes — see
 [07_speed_and_accuracy.py](../../examples/07_speed_and_accuracy.py) and
-`notes/benchmark_report.md`, which report wall time *after* this warmup
-compilation.
+{doc}`benchmarks`, which report wall time *after* this warmup compilation.
 
 ## Compilation cost vs. runtime
 
@@ -55,7 +54,7 @@ combination pays an XLA tracing/compilation cost on top of the actual
 integration; later calls with the same static shapes reuse the compiled
 executable and only pay runtime. When benchmarking or reporting timings,
 always report compile-time (first call) and steady-state runtime
-separately, as `notes/benchmark_report.md` does — a single combined number
+separately, as {doc}`benchmarks` does — a single combined number
 overstates per-call cost for any workload that calls `lyapunov_spectrum`
 more than once with the same shapes, and understates it for a true
 one-shot call.

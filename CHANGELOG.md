@@ -12,9 +12,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - README no longer claims DDE delays are integer-step only; it now
   documents both the default grid-snapped mode and the
   `interpolate=True` Hermite-interpolated mode.
+- `lyapax.adaptive.diffrax_adaptive_step` no longer silently returns a
+  truncated state when its internal `max_steps` is exhausted; it now
+  raises (via `equinox.error_if`, working under `jit`/`vmap` too) instead
+  of letting `lyapunov_spectrum` silently mis-associate an exponent with
+  the wrong elapsed time.
+- `lyapunov_spectrum`/`lyapunov_spectrum_dde` now reject `resume=` calls
+  whose `dt` doesn't match the checkpointed run's `dt`, instead of only
+  validating shapes/tracked dimensions.
+- CI's test job now installs the `adaptive` extra, so the adaptive-ODE
+  test modules actually run as tests in the matrix instead of only being
+  exercised indirectly via the docs build's Sphinx-Gallery execution.
+- `docs/api.rst` now includes `lyapax.adaptive`; README's example table,
+  development-install instructions, and docs-build command now cover
+  demos 15-19 and the `adaptive` extra, matching CI.
+- The `ValueError` raised when an adaptive integrator is passed to a
+  network/DDE problem no longer says "not supported for DDEs" (it fires
+  for any `network_problem`, delayed or not) — corrected to describe the
+  actual restriction (adaptive integration works only through a single,
+  uncoupled `ode_problem`).
+- Docstrings no longer reference the repository's internal `notes/`
+  directory (not part of the published package or docs); those pointers
+  now go to proper Sphinx cross-references instead.
 
 ### Added
 
+- A "capabilities and limitations" doc section
+  (`background/capabilities`) characterizing `lyapax.adaptive`'s actual
+  wall-clock performance: measured 2-4x slower than fixed-step `rk4`/`rk6`
+  at matched accuracy (not matched `dt`/`rtol`) on every system tested,
+  including a relaxation oscillator and large (`d=1500-3000`) systems —
+  it's a tolerance-driven-accuracy and forward-mode-differentiability
+  tool, not a speed optimization.
 - `CITATION.cff`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SUPPORT.md`,
   GitHub issue templates, and a pull request template.
 - Optional adaptive-step ODE integration via `lyapax.adaptive`

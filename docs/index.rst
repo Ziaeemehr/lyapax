@@ -19,6 +19,7 @@ instead:
    pip install -e ".[dev]"      # core + pytest/scipy for the test suite
    pip install -e ".[examples]" # + matplotlib, to run examples/
    pip install -e ".[docs]"     # + sphinx/sphinx-gallery, to build docs/
+   pip install -e ".[adaptive]" # + diffrax, for lyapax.adaptive
 
 Requires ``jax>=0.10``, Python ``>=3.11``.
 

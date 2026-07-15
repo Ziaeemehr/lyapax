@@ -19,8 +19,8 @@ exploit, since it always computes all ``d`` columns regardless of how many
 are actually tracked). See :ref:`matrix-free-tangent` for the design
 rationale.
 
-**Differentiating an exponent w.r.t. a system parameter** (``notes/
-open_issues.md`` item 6.1): ``lyapunov_spectrum`` is built entirely from
+**Differentiating an exponent w.r.t. a system parameter**:
+``lyapunov_spectrum`` is built entirely from
 ``jax.lax.scan`` (static trip count) and ``jnp.linalg.qr``, both of which
 support reverse-mode AD, so ``jax.grad``/``jax.jacrev`` do not raise here
 (unlike ``lyapax.adaptive``'s diffrax-backed integrator, whose internal

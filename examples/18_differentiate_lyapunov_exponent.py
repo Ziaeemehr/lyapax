@@ -1,6 +1,6 @@
 """
 Differentiating a Lyapunov exponent w.r.t. a system parameter
-========================================================
+=============================================================
 
 ``lyapunov_spectrum`` is built entirely from ``jax.lax.scan`` and
 ``jnp.linalg.qr``, both of which support ordinary JAX autodiff -- so a

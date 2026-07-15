@@ -372,9 +372,13 @@ def make_step_fn(
     if getattr(integrator, "_lyapax_adaptive_ode_only", False):
         raise ValueError(
             "adaptive ODE integrators (lyapax.adaptive.diffrax_adaptive_step) "
-            "are not supported for DDEs -- diffrax has no DDE support "
-            "(patrick-kidger/diffrax#406). DDE integration stays fixed-step "
-            "only; see notes/open_issues.md item 5 and notes/milestones.md M9.3."
+            "are only supported for a single, uncoupled ode_problem -- not "
+            "for network_problem (even without delays) or DDEs. Networks "
+            "and DDEs go through this shared step-function machinery, whose "
+            "per-stage coupling callback (coupling_at) has no adaptive-"
+            "integrator equivalent; DDEs additionally can't use diffrax at "
+            "all (diffrax has no DDE support, patrick-kidger/diffrax#406). "
+            "Both stay fixed-step only."
         )
     cvar_idx = jnp.array(list(cvar_indices), dtype=jnp.int32)
     integrate = _STEP_INTEGRATORS[integrator] if isinstance(integrator, str) else integrator

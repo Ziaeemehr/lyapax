@@ -25,8 +25,8 @@ quickly whether it fits your problem.
   engine, `dt=1.0` per iterate, no integrator involved.
 - **Adaptive-step ODE integration** (optional `adaptive` extra,
   `lyapax.adaptive.diffrax_adaptive_step`) — drops into `ode_problem`
-  alongside the fixed-step builtins with no other code changes; ODE-only,
-  see the gaps below.
+  alongside the fixed-step builtins with no other code changes; `ode_problem`
+  only (not `network_problem`, not DDEs), see the gaps below.
 - **Batched parameter / initial-condition sweeps** via `jax.vmap`
   (`sweep_lyapunov_spectrum`): a whole parameter grid as one XLA call.
 - **Kaplan-Yorke (Lyapunov) dimension** (`lyapax.core.kaplan_yorke_dimension`)
@@ -49,19 +49,20 @@ quickly whether it fits your problem.
 
 - **No stiff (implicit) ODE integration.** The built-in integrators are
   fixed-step (Euler / Heun / RK4 / RK6); adaptive-step *explicit*
-  Runge-Kutta is available for ODEs via the optional `adaptive` extra
-  (`lyapax.adaptive.diffrax_adaptive_step`, backed by
-  [diffrax](https://docs.kidger.site/diffrax/)) — but there is still no
-  implicit solver, so genuinely stiff systems are out of scope. The
-  computed exponents are those of the numerical time-`dt` map (or, for
-  the adaptive integrator, of the accepted-step sequence under a given
-  `rtol`/`atol`), not the exact continuous flow — checking convergence in
-  `dt` (or tolerance) is the caller's responsibility (the gallery's
-  speed-and-accuracy and adaptive-ODE examples show how). The adaptive
-  integrator's internal step-size control is a dynamic-trip-count
-  `while_loop`, so differentiating through it needs `jax.jacfwd`
-  (forward-mode); `jax.grad`/`jax.jacrev` (reverse-mode) do not work
-  through it.
+  Runge-Kutta is available for single, uncoupled ODEs (`ode_problem`) via
+  the optional `adaptive` extra (`lyapax.adaptive.diffrax_adaptive_step`,
+  backed by [diffrax](https://docs.kidger.site/diffrax/)) — not for
+  `network_problem` (rejected outright, even for a non-delayed network)
+  or DDEs, and there is still no implicit solver, so genuinely stiff
+  systems are out of scope regardless. The computed exponents are those
+  of the numerical time-`dt` map (or, for the adaptive integrator, of the
+  accepted-step sequence under a given `rtol`/`atol`), not the exact
+  continuous flow — checking convergence in `dt` (or tolerance) is the
+  caller's responsibility (the gallery's speed-and-accuracy and
+  adaptive-ODE examples show how). The adaptive integrator's internal
+  step-size control is a dynamic-trip-count `while_loop`, so
+  differentiating through it needs `jax.jacfwd` (forward-mode);
+  `jax.grad`/`jax.jacrev` (reverse-mode) do not work through it.
 - **DDE delays must be known and fixed.** No state-dependent or
   distributed delays. Grid-snapped mode further rounds $\tau$ to an
   integer multiple of `dt`; only `interpolate=True` removes that
@@ -96,3 +97,27 @@ quickly whether it fits your problem.
   see `lyapax.core`'s module docstring). Safe for non-chaotic/short-
   horizon systems; always sanity-check a chaotic-system gradient against
   finite differences before trusting it.
+
+(adaptive-integration-speed)=
+## Adaptive integration is not a speed optimization
+
+Measured, not assumed: at matched accuracy (not matched `dt`/`rtol`, which
+isn't a fair comparison across integrators with different meanings of
+"step size"), `diffrax_adaptive_step` was 2-4x slower than fixed-step
+`rk4`/`rk6` on a small chaotic system (Lorenz), up to ~4.5x slower on GPU
+for that same small system, and still ~4x slower even on a relaxation
+oscillator (Van der Pol) with sharply time-varying stiffness — the
+scenario adaptive stepping exists for. The overhead ratio does shrink at
+large state dimension (`d=1500-3000`), approaching rough parity, but never
+produced a clear win in any case tested.
+
+Root cause: the internal accept/reject `jax.lax.while_loop` pays real
+per-step overhead (PID controller update, solver-step bookkeeping) that a
+fixed-step raw step doesn't, and avoiding extra fixed-step steps only pays
+off in wall-clock terms if each one was expensive to begin with — which
+isn't the case for any system small enough to fit the exact/published
+references this page and {doc}`validation` rely on.
+
+Use the adaptive integrator for tolerance-driven accuracy control (no
+manual `dt`-convergence sweep) or because it's the only forward-mode-
+differentiable adaptive option here — not for throughput.
