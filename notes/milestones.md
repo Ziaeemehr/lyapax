@@ -653,12 +653,35 @@ genuine design decisions, tracked here instead of done inline:
   random-tangent-basis init and the transient and continues the same
   cumulative `history`/`times` — concatenating two calls' `history` is
   exactly what one uninterrupted call would have produced (verified in
-  `test_resume_matches_single_uninterrupted_run`). ODE only; the shared
-  `_run_renorm_scan` helper (also used by `lyapax.dde`) grew optional
-  `cum_log_growth0`/`elapsed_time0` offset args (default 0, no behavior
-  change for DDE, whose `LyapunovResult.checkpoint` stays `None` — no
-  resume support there yet, would additionally need the delay ring
-  buffer's state).
+  `test_resume_matches_single_uninterrupted_run`). Shipped ODE-only
+  first, deferring DDE (see below); the shared `_run_renorm_scan` helper
+  (also used by `lyapax.dde`) grew optional `cum_log_growth0`/
+  `elapsed_time0` offset args specifically to make the DDE follow-up a
+  small change once undertaken.
+- [x] **DDE resume (follow-up session, once a concrete need arose: the
+  user pointed out ODE already had `resume` via demo 16 and asked for the
+  DDE equivalent).** `lyapax.dde.DDECheckpoint` (new): mirrors
+  `LyapunovCheckpoint` but for the `(state, buf)` augmented Markovian
+  state a DDE actually needs — adds `buf`, the ring-buffer tangent
+  `Y_buf`, and the ring-buffer step counter `t` alongside `state`/`Y_state`/
+  `cum_log_growth`/`elapsed_time`. `lyapunov_spectrum_dde(..., resume=...)`
+  skips both the random-tangent-basis init *and* the mandatory
+  one-ring-cycle transient floor (M4's `min_transient = horizon * dt`) —
+  a resumed run's checkpointed `buf` is already fully populated from real
+  dynamics, so re-flooring would just waste steps, not fix a correctness
+  gap. Validation mirrors the ODE resume tests one-for-one
+  (`tests/test_dde.py`): `test_dde_resume_matches_single_uninterrupted_run`
+  (two chunks via `resume` bit-for-bit match one uninterrupted call, same
+  pattern as the ODE version), plus mutual-exclusivity-with-`t_transient`,
+  mismatched-`k`, and dimension-mismatch rejection tests. Demo:
+  `examples/17_dde_resume.py`, deliberately *not* reusing 16's linear-DDE
+  system — a clean linear DDE converges in a single chunk (verified by
+  hand before writing the demo, not illustrative of the multi-chunk loop)
+  — uses Mackey-Glass instead, whose small, noisy leading exponent
+  genuinely needs several resumed chunks to settle within tolerance.
+  `LyapunovResult.checkpoint`'s type annotation widened to
+  `LyapunovCheckpoint | DDECheckpoint | None` (both engines always set it
+  now); `DDECheckpoint` exported from `lyapax`'s top-level `__init__`.
 - [ ] Vectorized per-coupling-variable delayed gather in
   `_read_delayed_coupling` (currently a small static Python loop) — only
   worth it if multi-cvar delayed systems become common; current loop

@@ -19,7 +19,13 @@ from .core import (
     lyapunov_spectrum,
     ode_problem,
 )
-from .dde import DDEProblem, dde_problem, lyapunov_spectrum_dde, network_dde_problem
+from .dde import (
+    DDECheckpoint,
+    DDEProblem,
+    dde_problem,
+    lyapunov_spectrum_dde,
+    network_dde_problem,
+)
 from .integrators import euler_step, get_integrator, heun_step, ode_step, rk4_step, rk6_step
 from .network import Network, network_problem, network_step, network_step_parametrized
 
@@ -35,6 +41,7 @@ __all__ = [
     "ode_problem",
     "network_problem",
     "DDEProblem",
+    "DDECheckpoint",
     "dde_problem",
     "network_dde_problem",
     "Network",

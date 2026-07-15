@@ -53,7 +53,7 @@ from __future__ import annotations
 import math
 import warnings
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -415,6 +415,50 @@ def network_dde_problem(
     )
 
 
+class DDECheckpoint(NamedTuple):
+    """The DDE counterpart of ``lyapax.core.LyapunovCheckpoint``: enough
+    state to continue a ``lyapunov_spectrum_dde`` run with another
+    ``lyapunov_spectrum_dde(..., resume=result.checkpoint)`` call. A DDE's
+    Markovian state is ``(state, buf)`` together (see the module
+    docstring), not ``state`` alone, so unlike the ODE checkpoint this also
+    carries ``buf``, the ring-buffer tangent ``Y_buf``, and the ring-buffer
+    step counter ``t``."""
+
+    state: jnp.ndarray
+    """(n_sv, n_nodes) trajectory state at the end of the checkpointed run."""
+
+    buf: jnp.ndarray
+    """(horizon, n_cvar, n_nodes) (or the ``interpolate=True`` value/
+    derivative shape) ring buffer at the end of the checkpointed run."""
+
+    t: jnp.ndarray
+    """Scalar int32 ring-buffer step counter at the end of the
+    checkpointed run -- must be threaded through unchanged (not reset to
+    0), since it drives the buffer's modular read/write indices (see the
+    module docstring's note on why ``t`` lives in the scanned carry)."""
+
+    Y_state: jnp.ndarray
+    """(n_sv, n_nodes, k) QR-orthonormalized tangent basis for ``state``,
+    in raw (not display-sorted) column order -- see ``cum_log_growth``."""
+
+    Y_buf: jnp.ndarray
+    """(horizon, n_cvar, n_nodes, k) (or the ``interpolate=True`` shape)
+    tangent basis for the ring buffer, same raw column order as
+    ``Y_state`` -- together, ``(Y_state, Y_buf)`` is the full augmented
+    tangent basis, mirroring how ``(state, buf)`` is the full augmented
+    primal state."""
+
+    cum_log_growth: jnp.ndarray
+    """(k,) total accumulated log-growth since accumulation started, in
+    the same raw column order as ``Y_state``/``Y_buf`` -- see
+    ``lyapax.core.LyapunovCheckpoint.cum_log_growth``."""
+
+    elapsed_time: jnp.ndarray
+    """Scalar: total elapsed accumulation time since the end of the
+    transient, across every resumed call so far -- same units as
+    ``LyapunovResult.times``."""
+
+
 def lyapunov_spectrum_dde(
         step_fn_or_problem: CarryStepFn | DDEProblem,
         state0: jnp.ndarray | int | None = None,
@@ -427,6 +471,7 @@ def lyapunov_spectrum_dde(
         t_transient: float = 0.0,
         seed: int = 0,
         check_finite: bool = False,
+        resume: DDECheckpoint | None = None,
 ) -> LyapunovResult:
     """
     Compute the (partial or full) Lyapunov spectrum of a fixed-delay DDE,
@@ -475,6 +520,17 @@ def lyapunov_spectrum_dde(
         the augmented ``(state, buf)`` tangent dimension makes underflow
         more likely for large ``horizon``, so this is worth enabling while
         tuning ``renorm_every`` for a new DDE system.
+    resume : a previous call's ``result.checkpoint`` (a ``DDECheckpoint``),
+        to continue that run instead of starting a fresh one -- skips the
+        random tangent-basis init *and* the mandatory ring-cycle transient
+        (a resumed run's ``buf`` was already fully populated by the
+        checkpointed run), and ``history``/``times`` in the returned
+        ``LyapunovResult`` continue the cumulative running estimate, so
+        concatenating two calls' ``history`` reads as one continuous
+        convergence curve -- same contract as
+        ``lyapax.core.lyapunov_spectrum``'s ``resume``. Mutually exclusive
+        with a nonzero ``t_transient``. ``k`` must match the checkpoint's
+        tracked dimension if given explicitly (defaults to it otherwise).
 
     Returns
     -------
@@ -521,7 +577,31 @@ def lyapunov_spectrum_dde(
     d_buf = buf0.size
     d_total = d_state + d_buf
 
-    if k is None:
+    if resume is not None:
+        if t_transient > 0.0:
+            raise ValueError(
+                "t_transient and resume are mutually exclusive -- a "
+                "resumed run continues from an already-transient-aligned "
+                "checkpoint (its ring buffer is already fully populated); "
+                "pass t_transient=0.0 (the default) when resume is given."
+            )
+        if resume.state.shape != state_shape or resume.buf.shape != buf_shape:
+            raise ValueError(
+                f"resume.state/buf have shapes {resume.state.shape}/"
+                f"{resume.buf.shape}, but state0/buf0 have shapes "
+                f"{state_shape}/{buf_shape} -- resume must come from a "
+                "checkpoint of a run on the same system."
+            )
+        resume_k = resume.Y_state.shape[-1]
+        if k is None:
+            k = resume_k
+        elif k != resume_k:
+            raise ValueError(
+                f"k={k} does not match resume.Y_state's tracked dimension "
+                f"({resume_k}) -- resuming must track the same number of "
+                "exponents as the checkpointed run."
+            )
+    elif k is None:
         k = d_total
     if not (1 <= k <= d_total):
         raise ValueError(f"k must be in [1, {d_total}]; got {k}.")
@@ -535,10 +615,15 @@ def lyapunov_spectrum_dde(
             f"({renorm_every})."
         )
 
-    key = jax.random.PRNGKey(seed)
-    Y0_flat, _ = jnp.linalg.qr(jax.random.normal(key, (d_total, k), dtype=state0.dtype))
-    Y_state0 = Y0_flat[:d_state].reshape(state_shape + (k,))
-    Y_buf0 = Y0_flat[d_state:].reshape(buf_shape + (k,))
+    if resume is not None:
+        state0, buf0, t0 = resume.state, resume.buf, resume.t
+        Y_state0, Y_buf0 = resume.Y_state, resume.Y_buf
+    else:
+        key = jax.random.PRNGKey(seed)
+        Y0_flat, _ = jnp.linalg.qr(jax.random.normal(key, (d_total, k), dtype=state0.dtype))
+        Y_state0 = Y0_flat[:d_state].reshape(state_shape + (k,))
+        Y_buf0 = Y0_flat[d_state:].reshape(buf_shape + (k,))
+        t0 = jnp.int32(0)
 
     def _flatten(Y_state, Y_buf):
         return jnp.concatenate(
@@ -581,26 +666,27 @@ def lyapunov_spectrum_dde(
         Q_state, Q_buf = _unflatten(Q_flat)
         return state, buf, t, Q_state, Q_buf, R
 
-    t0 = jnp.int32(0)
-
     # Unconditional (unlike core.py's ODE transient, which is skippable via
     # t_transient=0.0): a DDE always needs at least one full ring cycle
     # (horizon * dt) before every buffer slot has been written from real
     # dynamics -- see the t_transient docstring above. Floored, not
-    # skipped, even when the caller passes t_transient=0.0 exactly.
-    min_transient = horizon * dt
-    n_transient = renorm_every * max(
-        1, round(max(t_transient, min_transient) / dt / renorm_every))
+    # skipped, even when the caller passes t_transient=0.0 exactly. Skipped
+    # entirely on resume: the checkpointed run already covered at least one
+    # full ring cycle, so buf0 (== resume.buf) is already fully populated.
+    if resume is None:
+        min_transient = horizon * dt
+        n_transient = renorm_every * max(
+            1, round(max(t_transient, min_transient) / dt / renorm_every))
 
-    def _transient_block(carry, _):
-        state, buf, t, Y_state, Y_buf = carry
-        state, buf, t, Y_state, Y_buf, _R = _advance(
-            state, buf, t, Y_state, Y_buf, renorm_every)
-        return (state, buf, t, Y_state, Y_buf), None
+        def _transient_block(carry, _):
+            state, buf, t, Y_state, Y_buf = carry
+            state, buf, t, Y_state, Y_buf, _R = _advance(
+                state, buf, t, Y_state, Y_buf, renorm_every)
+            return (state, buf, t, Y_state, Y_buf), None
 
-    (state0, buf0, t0, Y_state0, Y_buf0), _ = jax.lax.scan(
-        _transient_block, (state0, buf0, t0, Y_state0, Y_buf0), None,
-        length=n_transient // renorm_every)
+        (state0, buf0, t0, Y_state0, Y_buf0), _ = jax.lax.scan(
+            _transient_block, (state0, buf0, t0, Y_state0, Y_buf0), None,
+            length=n_transient // renorm_every)
 
     def _renorm_block(carry, _):
         state, buf, t, Y_state, Y_buf = carry
@@ -610,8 +696,19 @@ def lyapunov_spectrum_dde(
         return (state, buf, t, Y_state, Y_buf), log_growth
 
     n_renorm = n_steps // renorm_every
-    _final_carry, _final_cum_log_growth, result = _run_renorm_scan(
-        _renorm_block, (state0, buf0, t0, Y_state0, Y_buf0), n_renorm, renorm_every, dt)
+    cum_log_growth0 = resume.cum_log_growth if resume is not None else 0.0
+    elapsed_time0 = resume.elapsed_time if resume is not None else 0.0
+    final_carry, final_cum_log_growth, result = _run_renorm_scan(
+        _renorm_block, (state0, buf0, t0, Y_state0, Y_buf0), n_renorm, renorm_every, dt,
+        cum_log_growth0=cum_log_growth0, elapsed_time0=elapsed_time0,
+    )
+    final_state, final_buf, final_t, final_Y_state, final_Y_buf = final_carry
+    checkpoint = DDECheckpoint(
+        state=final_state, buf=final_buf, t=final_t,
+        Y_state=final_Y_state, Y_buf=final_Y_buf,
+        cum_log_growth=final_cum_log_growth, elapsed_time=result.times[-1],
+    )
+    result = result._replace(checkpoint=checkpoint)
     if check_finite:
         _check_finite(result)
     return result

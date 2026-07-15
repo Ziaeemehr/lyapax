@@ -40,7 +40,12 @@ how much a run's running exponent estimate moved over the tail of the run,
 paired with ``result.checkpoint``/``lyapunov_spectrum(..., resume=...)``,
 which continues a fixed-``n_steps`` run from where it left off instead of
 restarting, letting a caller run in inspectable chunks and stop once
-``convergence_drift`` says the estimate has settled.
+``convergence_drift`` says the estimate has settled -- and the same
+run-inspect-resume loop for a DDE (``lyapax.dde.lyapunov_spectrum_dde(...,
+resume=...)`` / ``lyapax.dde.DDECheckpoint``) on the Mackey-Glass chaotic
+benchmark, showing that a DDE checkpoint must additionally carry the delay
+ring buffer's state (not just trajectory state and tangent basis) for a
+resumed run to continue correctly.
 
 New capability -> new demo: as engine features land (a new coupling kind, a
 new delay structure, a performance change, ...), add a runnable example

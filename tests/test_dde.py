@@ -111,6 +111,72 @@ def test_linear_scalar_dde_small_delay_recovers_ode_decay():
     assert abs(float(result.exponents[0]) - (-a)) < 0.02
 
 
+# ---------------------------------------------------------------------------
+# resume -- continuing a DDE run from a previous call's checkpoint
+# ---------------------------------------------------------------------------
+
+def test_dde_resume_matches_single_uninterrupted_run():
+    a, tau, dt = 0.5, 0.3, 1e-2
+    problem = dde_problem(systems.linear_scalar_dde(a=a), state0=jnp.array([1.0]), tau=tau, dt=dt)
+
+    n1, n2, renorm_every = 15_000, 10_000, 5
+
+    whole = lyapunov_spectrum_dde(
+        problem, n_steps=n1 + n2, k=1, renorm_every=renorm_every, t_transient=10.0,
+    )
+
+    first = lyapunov_spectrum_dde(
+        problem, n_steps=n1, k=1, renorm_every=renorm_every, t_transient=10.0,
+    )
+    second = lyapunov_spectrum_dde(
+        problem, n_steps=n2, k=1, renorm_every=renorm_every, resume=first.checkpoint,
+    )
+
+    n1_renorm = n1 // renorm_every
+    np.testing.assert_allclose(
+        np.array(second.times), np.array(whole.times[n1_renorm:]), rtol=1e-12)
+    np.testing.assert_allclose(
+        np.array(second.exponents), np.array(whole.exponents), atol=1e-8)
+    np.testing.assert_allclose(
+        np.array(second.history[-1]), np.array(whole.history[-1]), atol=1e-8)
+
+
+def test_dde_resume_and_t_transient_mutually_exclusive():
+    a, tau, dt = 0.5, 0.3, 1e-2
+    problem = dde_problem(systems.linear_scalar_dde(a=a), state0=jnp.array([1.0]), tau=tau, dt=dt)
+    result = lyapunov_spectrum_dde(problem, n_steps=1_000, k=1, renorm_every=5, t_transient=10.0)
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        lyapunov_spectrum_dde(
+            problem, n_steps=1_000, k=1, renorm_every=5, t_transient=1.0,
+            resume=result.checkpoint,
+        )
+
+
+def test_dde_resume_rejects_mismatched_k():
+    a, tau, dt = 0.5, 0.3, 1e-2
+    problem = dde_problem(systems.linear_scalar_dde(a=a), state0=jnp.array([1.0]), tau=tau, dt=dt)
+    result = lyapunov_spectrum_dde(problem, n_steps=1_000, k=1, renorm_every=5, t_transient=10.0)
+
+    with pytest.raises(ValueError, match="tracked dimension"):
+        lyapunov_spectrum_dde(
+            problem, n_steps=1_000, k=2, renorm_every=5, resume=result.checkpoint,
+        )
+
+
+def test_dde_resume_rejects_dimension_mismatch():
+    a, tau, dt = 0.5, 0.3, 1e-2
+    problem1 = dde_problem(systems.linear_scalar_dde(a=a), state0=jnp.array([1.0]), tau=tau, dt=dt)
+    result1 = lyapunov_spectrum_dde(problem1, n_steps=1_000, k=1, renorm_every=5, t_transient=10.0)
+
+    problem2 = dde_problem(
+        systems.linear_scalar_dde(a=a), state0=jnp.array([1.0]), tau=2 * tau, dt=dt)
+    with pytest.raises(ValueError, match="shapes"):
+        lyapunov_spectrum_dde(
+            problem2, n_steps=1_000, renorm_every=5, resume=result1.checkpoint,
+        )
+
+
 def test_transient_floor_prevents_bias_from_short_user_transient():
     """lyapunov_spectrum_dde internally floors t_transient to at least one
     full ring cycle (horizon*dt) -- see the module docstring's discussion

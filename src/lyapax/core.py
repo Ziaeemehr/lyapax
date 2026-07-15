@@ -23,12 +23,15 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass
-from typing import Callable, NamedTuple
+from typing import TYPE_CHECKING, Callable, NamedTuple
 
 import jax
 import jax.numpy as jnp
 
 from .integrators import ode_step
+
+if TYPE_CHECKING:
+    from .dde import DDECheckpoint
 
 StepFn = Callable[[jnp.ndarray], jnp.ndarray]
 
@@ -101,16 +104,18 @@ class LyapunovResult(NamedTuple):
     """(n_renorm,) elapsed time (in units of ``dt``) at each row of
     ``history``, measured from the end of the transient."""
 
-    checkpoint: LyapunovCheckpoint | None = None
+    checkpoint: LyapunovCheckpoint | DDECheckpoint | None = None
     """Enough state to continue this run with another
-    ``lyapunov_spectrum(..., resume=result.checkpoint)`` call, picking up
-    exactly where this one left off (no re-transient, no discontinuity in
-    ``history``/``times``) -- the "run a fixed n_steps, eyeball
+    ``lyapunov_spectrum(..., resume=result.checkpoint)`` /
+    ``lyapunov_spectrum_dde(..., resume=result.checkpoint)`` call, picking
+    up exactly where this one left off (no re-transient, no discontinuity
+    in ``history``/``times``) -- the "run a fixed n_steps, eyeball
     ``history``/``convergence_drift``, resume if not converged yet"
-    workflow. Always set by ``lyapunov_spectrum`` (the ODE engine).
-    ``None`` for ``lyapax.dde.lyapunov_spectrum_dde``, which does not
-    support resuming (its checkpoint would also need the delay ring
-    buffer's state, not just ``state``/``Y``)."""
+    workflow. Always set by both ``lyapunov_spectrum`` (the ODE engine,
+    ``LyapunovCheckpoint``) and ``lyapax.dde.lyapunov_spectrum_dde`` (the
+    DDE engine, ``lyapax.dde.DDECheckpoint`` -- also carries the delay ring
+    buffer's state, since a DDE's Markovian state is ``(state, buf)``
+    together, not ``state`` alone)."""
 
 
 def _run_renorm_scan(
