@@ -47,5 +47,6 @@ sphinx_gallery_conf = {
     "filename_pattern": r"/\d{2}_",
     "within_subsection_order": "FileNameSortKey",
     "remove_config_comments": True,
+    "promote_jupyter_magic": True,
     "download_all_examples": False,
 }
