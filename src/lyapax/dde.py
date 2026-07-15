@@ -610,7 +610,7 @@ def lyapunov_spectrum_dde(
         return (state, buf, t, Y_state, Y_buf), log_growth
 
     n_renorm = n_steps // renorm_every
-    result = _run_renorm_scan(
+    _final_carry, _final_cum_log_growth, result = _run_renorm_scan(
         _renorm_block, (state0, buf0, t0, Y_state0, Y_buf0), n_renorm, renorm_every, dt)
     if check_finite:
         _check_finite(result)

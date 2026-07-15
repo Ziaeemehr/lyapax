@@ -34,7 +34,13 @@ than asserted -- and an adaptive-step ODE integrator
 the renormalization sampling interval from the integrator's own internal
 step size, with a tolerance-convergence sweep, a cross-check against
 fixed-step rk4, and a demonstration that differentiating a Lyapunov exponent
-through it requires ``jax.jacfwd`` rather than ``jax.grad``.
+through it requires ``jax.jacfwd`` rather than ``jax.grad`` -- and a
+convergence diagnostic (``lyapax.core.convergence_drift``) that summarizes
+how much a run's running exponent estimate moved over the tail of the run,
+paired with ``result.checkpoint``/``lyapunov_spectrum(..., resume=...)``,
+which continues a fixed-``n_steps`` run from where it left off instead of
+restarting, letting a caller run in inspectable chunks and stop once
+``convergence_drift`` says the estimate has settled.
 
 New capability -> new demo: as engine features land (a new coupling kind, a
 new delay structure, a performance change, ...), add a runnable example

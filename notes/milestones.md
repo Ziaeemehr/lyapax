@@ -638,9 +638,27 @@ genuine design decisions, tracked here instead of done inline:
   parameter pytrees, replacing the current broad `Callable`/`dict`
   annotations — mostly a discoverability/IDE-support improvement, not a
   correctness gap.
-- [ ] A convergence-helper utility summarizing last-window drift in
+- [x] A convergence-helper utility summarizing last-window drift in
   `LyapunovResult.history` (relative/absolute change over the tail of
-  the run) — nice-to-have, no test currently depends on it.
+  the run) — implemented as `lyapax.core.convergence_drift(result,
+  window=0.1, tol=None)`, returning a `ConvergenceDrift(absolute,
+  relative, converged)` NamedTuple; `converged` is `None` unless `tol` is
+  given. Exported from `lyapax`'s top-level `__init__`. Tests in
+  `tests/test_lyapunov_core.py`; demo in `examples/16_convergence_drift.py`.
+  Extended (same session) with a resume mechanism so a caller can act on
+  the diagnostic without restarting: `LyapunovResult.checkpoint`
+  (`LyapunovCheckpoint`: trajectory state, raw-order tangent basis,
+  raw-order cumulative log-growth, elapsed time) plus
+  `lyapunov_spectrum(..., resume=checkpoint)`, which skips the
+  random-tangent-basis init and the transient and continues the same
+  cumulative `history`/`times` — concatenating two calls' `history` is
+  exactly what one uninterrupted call would have produced (verified in
+  `test_resume_matches_single_uninterrupted_run`). ODE only; the shared
+  `_run_renorm_scan` helper (also used by `lyapax.dde`) grew optional
+  `cum_log_growth0`/`elapsed_time0` offset args (default 0, no behavior
+  change for DDE, whose `LyapunovResult.checkpoint` stays `None` — no
+  resume support there yet, would additionally need the delay ring
+  buffer's state).
 - [ ] Vectorized per-coupling-variable delayed gather in
   `_read_delayed_coupling` (currently a small static Python loop) — only
   worth it if multi-cvar delayed systems become common; current loop

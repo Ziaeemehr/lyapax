@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from lyapax import systems
-from lyapax.core import lyapunov_spectrum, ode_problem
+from lyapax.core import convergence_drift, lyapunov_spectrum, ode_problem
 from lyapax.integrators import rk4_step
 from lyapax.utils import simulate_trajectory
 
@@ -253,3 +253,134 @@ def test_tangent_propagation_matches_dense_jacfwd():
     expected_action = dense_jac @ Y0
 
     np.testing.assert_allclose(np.array(computed_action), np.array(expected_action), atol=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# convergence_drift -- diagnostic summarizing tail drift in result.history
+# ---------------------------------------------------------------------------
+
+def test_convergence_drift_small_for_long_run():
+    A = jnp.diag(jnp.array([-1.0, -2.0, -5.0]))
+    rhs = systems.linear_system(A)
+    dt = 1e-3
+    step = rk4_step(rhs, dt)
+
+    result = lyapunov_spectrum(
+        step, state0=jnp.array([0.3, -0.2, 0.5]),
+        dt=dt, n_steps=20_000, renorm_every=10, t_transient=5.0,
+    )
+
+    drift = convergence_drift(result, window=0.1, tol=1e-2)
+    assert bool(jnp.all(drift.converged))
+    assert bool(jnp.all(drift.relative < 1e-2))
+    assert bool(jnp.all(jnp.isfinite(drift.absolute)))
+
+
+def test_convergence_drift_without_tol_leaves_converged_none():
+    A = jnp.diag(jnp.array([-1.0, -2.0, -5.0]))
+    step = rk4_step(systems.linear_system(A), 1e-3)
+    result = lyapunov_spectrum(
+        step, state0=jnp.array([0.3, -0.2, 0.5]),
+        dt=1e-3, n_steps=2_000, renorm_every=10,
+    )
+
+    drift = convergence_drift(result)
+    assert drift.converged is None
+
+
+def test_convergence_drift_rejects_out_of_range_window():
+    A = jnp.diag(jnp.array([-1.0]))
+    step = rk4_step(systems.linear_system(A), 1e-3)
+    result = lyapunov_spectrum(
+        step, state0=jnp.array([0.3]), dt=1e-3, n_steps=1_000, renorm_every=10,
+    )
+
+    with pytest.raises(ValueError, match="window"):
+        convergence_drift(result, window=0.0)
+    with pytest.raises(ValueError, match="window"):
+        convergence_drift(result, window=1.5)
+
+
+def test_convergence_drift_rejects_single_row_history():
+    A = jnp.diag(jnp.array([-1.0]))
+    step = rk4_step(systems.linear_system(A), 1e-3)
+    result = lyapunov_spectrum(
+        step, state0=jnp.array([0.3]), dt=1e-3, n_steps=10, renorm_every=10,
+    )
+
+    with pytest.raises(ValueError, match="at least 2"):
+        convergence_drift(result)
+
+
+# ---------------------------------------------------------------------------
+# resume -- continuing a run from a previous call's checkpoint
+# ---------------------------------------------------------------------------
+
+def test_resume_matches_single_uninterrupted_run():
+    sigma, rho, beta = 10.0, 28.0, 8.0 / 3.0
+    rhs = systems.lorenz(sigma, rho, beta)
+    dt = 1e-2
+    problem = ode_problem(rhs, state0=jnp.array([1.0, 1.0, 1.0]), dt=dt)
+
+    n1, n2, renorm_every = 3_000, 2_000, 10
+
+    whole = lyapunov_spectrum(
+        problem, n_steps=n1 + n2, renorm_every=renorm_every, t_transient=100.0,
+    )
+
+    first = lyapunov_spectrum(
+        problem, n_steps=n1, renorm_every=renorm_every, t_transient=100.0,
+    )
+    second = lyapunov_spectrum(
+        problem, n_steps=n2, renorm_every=renorm_every, resume=first.checkpoint,
+    )
+
+    n1_renorm = n1 // renorm_every
+    np.testing.assert_allclose(
+        np.array(second.times), np.array(whole.times[n1_renorm:]), rtol=1e-12)
+    np.testing.assert_allclose(
+        np.array(second.exponents), np.array(whole.exponents), atol=1e-8)
+    np.testing.assert_allclose(
+        np.array(second.history[-1]), np.array(whole.history[-1]), atol=1e-8)
+
+
+def test_resume_and_t_transient_mutually_exclusive():
+    step = rk4_step(systems.linear_system(jnp.diag(jnp.array([-1.0]))), 1e-3)
+    result = lyapunov_spectrum(
+        step, state0=jnp.array([0.3]), dt=1e-3, n_steps=100, renorm_every=10,
+    )
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        lyapunov_spectrum(
+            step, state0=jnp.array([0.3]), dt=1e-3, n_steps=100,
+            renorm_every=10, t_transient=1.0, resume=result.checkpoint,
+        )
+
+
+def test_resume_rejects_mismatched_k():
+    A = jnp.diag(jnp.array([-1.0, -2.0]))
+    step = rk4_step(systems.linear_system(A), 1e-3)
+    result = lyapunov_spectrum(
+        step, state0=jnp.array([0.3, 0.1]), dt=1e-3, n_steps=100,
+        renorm_every=10, k=1,
+    )
+
+    with pytest.raises(ValueError, match="tracked dimension"):
+        lyapunov_spectrum(
+            step, state0=jnp.array([0.3, 0.1]), dt=1e-3, n_steps=100,
+            renorm_every=10, k=2, resume=result.checkpoint,
+        )
+
+
+def test_resume_rejects_dimension_mismatch():
+    step1 = rk4_step(systems.linear_system(jnp.diag(jnp.array([-1.0]))), 1e-3)
+    result1 = lyapunov_spectrum(
+        step1, state0=jnp.array([0.3]), dt=1e-3, n_steps=100, renorm_every=10,
+    )
+
+    step2 = rk4_step(systems.linear_system(jnp.diag(jnp.array([-1.0, -2.0]))), 1e-3)
+    with pytest.raises(ValueError, match="dimension"):
+        lyapunov_spectrum(
+            step2, state0=jnp.array([0.3, 0.1]), dt=1e-3, n_steps=100,
+            renorm_every=10, resume=result1.checkpoint,
+        )

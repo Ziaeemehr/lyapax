@@ -56,6 +56,33 @@ def _warn_if_not_x64(state0: jnp.ndarray) -> None:
         )
 
 
+class LyapunovCheckpoint(NamedTuple):
+    state: jnp.ndarray
+    """(d,) trajectory state at the end of the checkpointed run."""
+
+    Y: jnp.ndarray
+    """(d, k) QR-orthonormalized tangent basis at the end of the
+    checkpointed run, in its raw (not display-sorted) column order -- see
+    ``cum_log_growth``."""
+
+    cum_log_growth: jnp.ndarray
+    """(k,) total accumulated log-growth (sum of ``log|diag(R)|`` over
+    every renormalization block since accumulation started) in the same raw
+    column order as ``Y`` -- *not* ``LyapunovResult.history``'s column
+    order, which is re-sorted by the final row on every call and can
+    reorder differently between two otherwise-identical resumed runs if
+    exponents are near-degenerate. Keeping this in ``Y``'s raw order is
+    what makes resuming exact: it is the same "never reordered until the
+    very end" bookkeeping ``lyapunov_spectrum`` already does internally
+    within a single call, just carried across two calls instead of within
+    one."""
+
+    elapsed_time: jnp.ndarray
+    """Scalar: total elapsed accumulation time since the end of the
+    transient, across every resumed call so far -- same units as
+    ``LyapunovResult.times``."""
+
+
 class LyapunovResult(NamedTuple):
     exponents: jnp.ndarray
     """(k,) final Lyapunov-exponent estimates, sorted descending."""
@@ -74,10 +101,23 @@ class LyapunovResult(NamedTuple):
     """(n_renorm,) elapsed time (in units of ``dt``) at each row of
     ``history``, measured from the end of the transient."""
 
+    checkpoint: LyapunovCheckpoint | None = None
+    """Enough state to continue this run with another
+    ``lyapunov_spectrum(..., resume=result.checkpoint)`` call, picking up
+    exactly where this one left off (no re-transient, no discontinuity in
+    ``history``/``times``) -- the "run a fixed n_steps, eyeball
+    ``history``/``convergence_drift``, resume if not converged yet"
+    workflow. Always set by ``lyapunov_spectrum`` (the ODE engine).
+    ``None`` for ``lyapax.dde.lyapunov_spectrum_dde``, which does not
+    support resuming (its checkpoint would also need the delay ring
+    buffer's state, not just ``state``/``Y``)."""
+
 
 def _run_renorm_scan(
         renorm_block, carry0, n_renorm: int, renorm_every: int, dt: float,
-) -> LyapunovResult:
+        cum_log_growth0: jnp.ndarray | float = 0.0,
+        elapsed_time0: jnp.ndarray | float = 0.0,
+):
     """Shared tail between ``lyapunov_spectrum`` (ODE) and
     ``lyapax.dde.lyapunov_spectrum_dde``: scan ``renorm_block`` (which must
     return ``(new_carry, log_growth (k,))`` per call, log-growth already
@@ -86,19 +126,30 @@ def _run_renorm_scan(
     estimates. Not part of the public API -- the only thing that differs
     between the ODE and DDE engines is what one renorm block's tangent
     propagation looks like, not this bookkeeping.
+
+    ``cum_log_growth0``/``elapsed_time0`` offset the cumulative sum/elapsed
+    time before turning them into ``history``/``times`` -- zero (the
+    default) for a fresh run, or a previous call's raw-order final
+    cumulative log-growth/elapsed time when resuming (``lyapunov_spectrum``'s
+    ``resume=`` path). Returns ``(final_carry, final_cum_log_growth,
+    result)`` -- the extra two (over just ``result``) are what
+    ``lyapunov_spectrum`` needs to build the next ``LyapunovCheckpoint``;
+    ``lyapunov_spectrum_dde`` ignores them (no resume support yet).
     """
-    _final_carry, log_growth_per_block = jax.lax.scan(
+    final_carry, log_growth_per_block = jax.lax.scan(
         renorm_block, carry0, None, length=n_renorm)
 
-    cum_log_growth = jnp.cumsum(log_growth_per_block, axis=0)  # (n_renorm, k)
-    block_times = (jnp.arange(1, n_renorm + 1) * renorm_every) * dt
+    # (n_renorm, k), raw (not display-sorted) column order
+    cum_log_growth = jnp.cumsum(log_growth_per_block, axis=0) + cum_log_growth0
+    block_times = elapsed_time0 + (jnp.arange(1, n_renorm + 1) * renorm_every) * dt
     history = cum_log_growth / block_times[:, None]
 
     order = jnp.argsort(-history[-1])
     history = history[:, order]
     exponents = history[-1]
 
-    return LyapunovResult(exponents=exponents, history=history, times=block_times)
+    result = LyapunovResult(exponents=exponents, history=history, times=block_times)
+    return final_carry, cum_log_growth[-1], result
 
 
 def _check_finite(result: LyapunovResult) -> None:
@@ -117,6 +168,85 @@ def _check_finite(result: LyapunovResult) -> None:
             "overflow tradeoff, or pass check_finite=False to disable "
             "this check."
         )
+
+
+class ConvergenceDrift(NamedTuple):
+    absolute: jnp.ndarray
+    """(k,) ``|history[-1] - history[-1 - window_rows]|`` per exponent --
+    the raw change in the running estimate over the tail window."""
+
+    relative: jnp.ndarray
+    """(k,) ``absolute / |history[-1]|`` per exponent. Blows up for
+    exponents near zero (e.g. a conservative system's zero exponent, or any
+    near-degenerate pair) -- a near-zero reference makes "relative to it"
+    not meaningful; use ``absolute`` for those columns instead."""
+
+    converged: jnp.ndarray | None
+    """(k,) bool, ``relative <= tol`` per exponent -- ``None`` if ``tol``
+    was not given to ``convergence_drift``."""
+
+
+def convergence_drift(
+        result: LyapunovResult, window: float = 0.1, tol: float | None = None,
+) -> ConvergenceDrift:
+    """
+    Summarize how much each exponent's running estimate has moved over the
+    tail of the run, by comparing ``result.history[-1]`` (the final
+    estimate) to the estimate ``window`` fraction of the run's
+    renormalization points earlier.
+
+    ``lyapunov_spectrum``/``lyapunov_spectrum_dde`` always run a fixed
+    ``n_steps`` -- there is no built-in stopping criterion, adaptive or
+    otherwise. This is a diagnostic to help a caller judge, after the fact,
+    whether that fixed-length run was long enough: a large drift means the
+    estimate was probably still moving and ``n_steps`` should be increased;
+    a small, stable drift is evidence (not proof) of convergence. Pairs
+    with ``result.checkpoint``/``resume=``: if not converged, continue the
+    same run with ``lyapunov_spectrum(..., resume=result.checkpoint)``
+    instead of restarting from scratch.
+
+    :param result: output of ``lyapunov_spectrum``/``lyapunov_spectrum_dde``.
+    :param window: fraction, in ``(0, 1]``, of ``result.history``'s rows
+        making up the tail comparison window. Default ``0.1`` compares the
+        final estimate against the estimate from 10% of the run ago.
+    :param tol: if given, ``converged`` is ``relative <= tol`` per
+        exponent; otherwise ``converged`` is ``None``.
+
+    :return: ``ConvergenceDrift(absolute, relative, converged)``.
+
+    Usage
+    -----
+    >>> import jax
+    >>> jax.config.update("jax_enable_x64", True)
+    >>> import jax.numpy as jnp
+    >>> from lyapax import lyapunov_spectrum, ode_problem, systems
+    >>> from lyapax.core import convergence_drift
+    >>> rhs = systems.lorenz(sigma=10.0, rho=28.0, beta=8.0 / 3.0)
+    >>> problem = ode_problem(rhs, state0=jnp.array([1.0, 1.0, 1.0]), dt=1e-2)
+    >>> result = lyapunov_spectrum(
+    ...     problem, n_steps=50_000, renorm_every=10, t_transient=100.0,
+    ... )
+    >>> drift = convergence_drift(result, window=0.1, tol=1e-2)
+    >>> bool(drift.converged[0])  # doctest: +SKIP
+    True
+    """
+    if not (0.0 < window <= 1.0):
+        raise ValueError(f"window must be in (0, 1]; got {window}.")
+    n_renorm = result.history.shape[0]
+    if n_renorm < 2:
+        raise ValueError(
+            "convergence_drift needs at least 2 renormalization points in "
+            f"result.history to measure drift over; got {n_renorm}. Use a "
+            "smaller renorm_every or a larger n_steps."
+        )
+    window_rows = min(max(1, round(window * n_renorm)), n_renorm - 1)
+
+    latest = result.history[-1]
+    reference = result.history[-1 - window_rows]
+    absolute = jnp.abs(latest - reference)
+    relative = absolute / jnp.abs(latest)
+    converged = None if tol is None else relative <= tol
+    return ConvergenceDrift(absolute=absolute, relative=relative, converged=converged)
 
 
 @dataclass(frozen=True)
@@ -170,6 +300,7 @@ def lyapunov_spectrum(
         t_transient: float = 0.0,
         seed: int = 0,
         check_finite: bool = False,
+        resume: LyapunovCheckpoint | None = None,
 ) -> LyapunovResult:
     """
     Compute the (partial or full) Lyapunov spectrum of ``step_fn`` along the
@@ -204,13 +335,27 @@ def lyapunov_spectrum(
         ``exp(|lambda_max| * renorm_every * dt)`` stays well within
         float64 range.
     t_transient : time to integrate (discarding tangent tracking) before
-        starting the Lyapunov accumulation.
-    seed : PRNG seed for the initial random tangent-vector basis.
+        starting the Lyapunov accumulation. Mutually exclusive with
+        ``resume`` (raises ``ValueError`` if both are given and nonzero) --
+        a resumed run is already transient-aligned.
+    seed : PRNG seed for the initial random tangent-vector basis. Unused
+        when ``resume`` is given (the tangent basis comes from the
+        checkpoint instead).
     check_finite : if True, raise ``FloatingPointError`` when any running
         estimate in ``history`` is non-finite (a QR diagonal underflowed to
         0 or overflowed to inf, e.g. from ``renorm_every`` too large).
         Off by default and only usable when this function is called
         eagerly (not wrapped in ``jax.jit``).
+    resume : a previous call's ``result.checkpoint``, to continue that run
+        instead of starting a fresh one -- skips the random tangent-basis
+        init and the transient, and ``history``/``times`` in the returned
+        ``LyapunovResult`` continue the cumulative running estimate (not
+        reset to zero), so concatenating two calls' ``history`` reads as
+        one continuous convergence curve. ``k`` must match the checkpoint's
+        tracked dimension if given explicitly (defaults to it otherwise).
+        See :ref:`16_convergence_drift.py
+        <sphx_glr_auto_examples_16_convergence_drift.py>` for the
+        run-inspect-resume workflow this enables.
 
     Returns
     -------
@@ -257,7 +402,30 @@ def lyapunov_spectrum(
     state0 = jnp.asarray(state0)
     _warn_if_not_x64(state0)
     d = state0.shape[0]
-    if k is None:
+    if resume is not None:
+        if t_transient > 0.0:
+            raise ValueError(
+                "t_transient and resume are mutually exclusive -- a "
+                "resumed run continues from an already-transient-aligned "
+                "checkpoint; pass t_transient=0.0 (the default) when "
+                "resume is given."
+            )
+        if resume.state.shape[0] != d:
+            raise ValueError(
+                f"resume.state has dimension {resume.state.shape[0]}, but "
+                f"state0 has dimension {d} -- resume must come from a "
+                "checkpoint of a run on the same system."
+            )
+        resume_k = resume.Y.shape[1]
+        if k is None:
+            k = resume_k
+        elif k != resume_k:
+            raise ValueError(
+                f"k={k} does not match resume.Y's tracked dimension "
+                f"({resume_k}) -- resuming must track the same number of "
+                "exponents as the checkpointed run."
+            )
+    elif k is None:
         k = d
     if not (1 <= k <= d):
         raise ValueError(f"k must be in [1, {d}]; got {k}.")
@@ -271,9 +439,12 @@ def lyapunov_spectrum(
             f"({renorm_every})."
         )
 
-    key = jax.random.PRNGKey(seed)
-    Y0 = jax.random.normal(key, (d, k), dtype=state0.dtype)
-    Y0, _ = jnp.linalg.qr(Y0)
+    if resume is not None:
+        state0, Y0 = resume.state, resume.Y
+    else:
+        key = jax.random.PRNGKey(seed)
+        Y0 = jax.random.normal(key, (d, k), dtype=state0.dtype)
+        Y0, _ = jnp.linalg.qr(Y0)
 
     def _advance(state, Y, n_substeps):
         """Propagate state and tangent matrix jointly for n_substeps raw
@@ -297,7 +468,7 @@ def lyapunov_spectrum(
         Q, R = jnp.linalg.qr(Y)
         return state, Q, R
 
-    if t_transient > 0.0:
+    if t_transient > 0.0 and resume is None:
         # Chunk the transient at the same cadence as the main run: the
         # transient isn't just letting the *state* reach the attractor, it's
         # also letting the tangent vectors align to the Oseledets subspaces
@@ -320,7 +491,18 @@ def lyapunov_spectrum(
         return (state, Q), log_growth
 
     n_renorm = n_steps // renorm_every
-    result = _run_renorm_scan(_renorm_block, (state0, Y0), n_renorm, renorm_every, dt)
+    cum_log_growth0 = resume.cum_log_growth if resume is not None else 0.0
+    elapsed_time0 = resume.elapsed_time if resume is not None else 0.0
+    final_carry, final_cum_log_growth, result = _run_renorm_scan(
+        _renorm_block, (state0, Y0), n_renorm, renorm_every, dt,
+        cum_log_growth0=cum_log_growth0, elapsed_time0=elapsed_time0,
+    )
+    final_state, final_Y = final_carry
+    checkpoint = LyapunovCheckpoint(
+        state=final_state, Y=final_Y,
+        cum_log_growth=final_cum_log_growth, elapsed_time=result.times[-1],
+    )
+    result = result._replace(checkpoint=checkpoint)
     if check_finite:
         _check_finite(result)
     return result
