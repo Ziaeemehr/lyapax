@@ -49,9 +49,12 @@ examples = [
 # Adaptive-step ODE integration (M9, notes/milestones.md) -- ODE-only,
 # diffrax has no DDE support (patrick-kidger/diffrax#406). Verified against
 # diffrax==0.7.2 in the lyapax dev env (jax==0.10.2 already installed
-# satisfies diffrax's jax>=0.4.38 floor).
+# satisfies diffrax's jax>=0.4.38 floor). equinox is a diffrax dependency
+# already, but lyapax.adaptive imports it directly (equinox.error_if), so
+# it's listed explicitly rather than relied on transitively.
 adaptive = [
     "diffrax>=0.7.2",
+    "equinox>=0.11",
 ]
 docs = [
     "sphinx>=7",

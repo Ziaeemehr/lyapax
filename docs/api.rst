@@ -31,6 +31,16 @@ Integrators
 .. automodule:: lyapax.integrators
    :members:
 
+Adaptive
+--------
+
+Optional adaptive-step ODE integration via the ``adaptive`` extra
+(``pip install lyapax[adaptive]``); not imported by ``lyapax``'s
+top-level ``__init__``.
+
+.. automodule:: lyapax.adaptive
+   :members:
+
 Coupling
 --------
 

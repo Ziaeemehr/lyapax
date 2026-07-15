@@ -384,3 +384,16 @@ def test_resume_rejects_dimension_mismatch():
             step2, state0=jnp.array([0.3, 0.1]), dt=1e-3, n_steps=100,
             renorm_every=10, resume=result1.checkpoint,
         )
+
+
+def test_resume_rejects_dt_mismatch():
+    step = rk4_step(systems.linear_system(jnp.diag(jnp.array([-1.0]))), 1e-3)
+    result = lyapunov_spectrum(
+        step, state0=jnp.array([0.3]), dt=1e-3, n_steps=100, renorm_every=10,
+    )
+
+    with pytest.raises(ValueError, match="resume.dt"):
+        lyapunov_spectrum(
+            step, state0=jnp.array([0.3]), dt=2e-3, n_steps=100,
+            renorm_every=10, resume=result.checkpoint,
+        )

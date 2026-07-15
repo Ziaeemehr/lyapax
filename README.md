@@ -22,6 +22,7 @@ For development (running the test suite or examples), install from a clone inste
 pip install -e ".[dev]"      # core + pytest/scipy for the test suite
 pip install -e ".[examples]" # + matplotlib, to run examples/
 pip install -e ".[docs]"     # + sphinx/sphinx-gallery, to build docs/
+pip install -e ".[adaptive]" # + diffrax, for lyapax.adaptive
 ```
 
 Requires `jax>=0.10`, Python `>=3.11`.
@@ -119,17 +120,23 @@ Runnable, sphinx-gallery-formatted demos in `examples/` (`pip install
 | `12_public_api_overview.py` | Problem-object API for ODEs, networks, and DDEs |
 | `13_dde_history_interpolation.py` | Grid-snapped vs. Hermite-interpolated DDE history reads |
 | `14_gpu_acceleration.py` | When GPU execution pays off for larger Lyapunov workloads |
+| `15_adaptive_ode.py` | Adaptive-step ODE integration via the optional `diffrax` backend |
+| `16_convergence_drift.py` | Chunked run-inspect-resume loop with `convergence_drift` |
+| `17_dde_resume.py` | Resuming a checkpointed DDE run |
+| `18_differentiate_lyapunov_exponent.py` | Differentiating an exponent w.r.t. a system parameter, and where that breaks down |
+| `19_kaplan_yorke_dimension.py` | Kaplan-Yorke dimension from a Lyapunov spectrum |
 
 ## Building the docs
 
 ```bash
-pip install -e ".[docs]"
+pip install -e ".[docs,adaptive]"
 sphinx-build -b html docs docs/_build/html
 ```
 
 This re-runs every numbered `examples/*.py` file to render it into a
-sphinx-gallery gallery (code, output, and plots), alongside the API
-reference; open `docs/_build/html/index.html` when it's done.
+sphinx-gallery gallery (code, output, and plots), including
+`15_adaptive_ode.py` (hence the `adaptive` extra above), alongside the
+API reference; open `docs/_build/html/index.html` when it's done.
 
 ## Further reading
 

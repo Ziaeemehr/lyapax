@@ -106,6 +106,19 @@ def test_grad_reverse_mode_raises():
         jax.grad(lambda_max)(0.5)
 
 
+def test_max_steps_exhaustion_raises():
+    """max_steps=0 deterministically forces the internal while_loop to exit
+    with tprev == t0 < t1 on the very first dt advance, regardless of
+    system/tolerances -- exercises the eqx.error_if completion check
+    without needing a genuinely pathological rhs/tolerance combination.
+    """
+    rhs = systems.lorenz(10.0, 28.0, 8.0 / 3.0)
+    integrator = diffrax_adaptive_step(rtol=1e-9, atol=1e-11, max_steps=0)
+    problem = ode_problem(rhs, state0=jnp.array([1.0, 1.0, 1.0]), dt=0.1, integrator=integrator)
+    with pytest.raises(RuntimeError, match="max_steps exhausted"):
+        lyapunov_spectrum(problem, n_steps=1, renorm_every=1)
+
+
 def test_default_solver_requires_scan_kind_lax():
     with pytest.raises(ValueError, match="scan_kind"):
         diffrax_adaptive_step(solver=diffrax.Dopri5())

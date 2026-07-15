@@ -17,6 +17,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - `CITATION.cff`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SUPPORT.md`,
   GitHub issue templates, and a pull request template.
+- Optional adaptive-step ODE integration via `lyapax.adaptive`
+  (`diffrax_adaptive_step`, the `adaptive` extra), supporting forward-mode
+  differentiation (`jax.jacfwd`/`jax.jvp`) but not reverse mode.
+- `interpolate=True` cubic-Hermite DDE history reconstruction, alongside
+  the existing grid-snapped mode, with second-order (Heun) and
+  approximately fourth-order (RK4) accuracy on a scalar analytic case.
+- `result.checkpoint` / `resume=` support for continuing a
+  `lyapunov_spectrum`/`lyapunov_spectrum_dde` run without restarting, and
+  `lyapax.core.convergence_drift` for judging whether a fixed-`n_steps`
+  run has settled.
+- Differentiability guidance and tests for `lyapunov_spectrum` w.r.t.
+  system parameters (`jax.grad`/`jax.jacfwd`), including the documented
+  limitation that gradients through a genuinely chaotic trajectory
+  inherit its exponential sensitivity and are not reliable long-time
+  estimates.
+- `lyapax.core.kaplan_yorke_dimension` for computing the Kaplan-Yorke
+  (Lyapunov) dimension from a spectrum, with a partial-spectrum guard.
 
 ## [0.1.0] - 2026-07-03
 

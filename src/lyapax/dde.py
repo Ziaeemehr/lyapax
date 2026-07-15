@@ -458,6 +458,15 @@ class DDECheckpoint(NamedTuple):
     transient, across every resumed call so far -- same units as
     ``LyapunovResult.times``."""
 
+    dt: float = None
+    """The ``dt`` of the run that produced this checkpoint (a plain Python
+    float, not a traced array). ``dt`` also determines the grid-snapped
+    delay ``tau_steps``/``horizon`` for a DDE, so a ``dt`` mismatch on
+    resume would be even more likely to silently corrupt a DDE run than an
+    ODE one -- see ``lyapax.core.LyapunovCheckpoint.dt``, which this
+    mirrors. ``lyapunov_spectrum_dde`` checks this on ``resume=`` and
+    raises if it differs from the resuming call's ``dt``."""
+
 
 def lyapunov_spectrum_dde(
         step_fn_or_problem: CarryStepFn | DDEProblem,
@@ -592,6 +601,16 @@ def lyapunov_spectrum_dde(
                 f"{state_shape}/{buf_shape} -- resume must come from a "
                 "checkpoint of a run on the same system."
             )
+        if resume.dt is not None and float(resume.dt) != float(dt):
+            raise ValueError(
+                f"resume.dt ({resume.dt!r}) does not match this call's dt "
+                f"({dt!r}) -- resuming under a different dt would "
+                "misinterpret the checkpointed elapsed_time/history (and, "
+                "for a DDE, the grid-snapped delay/horizon) without any "
+                "shape-based sign of the mismatch. Use the same dt as the "
+                "checkpointed run, or start a fresh run instead of "
+                "resuming."
+            )
         resume_k = resume.Y_state.shape[-1]
         if k is None:
             k = resume_k
@@ -707,6 +726,7 @@ def lyapunov_spectrum_dde(
         state=final_state, buf=final_buf, t=final_t,
         Y_state=final_Y_state, Y_buf=final_Y_buf,
         cum_log_growth=final_cum_log_growth, elapsed_time=result.times[-1],
+        dt=float(dt),
     )
     result = result._replace(checkpoint=checkpoint)
     if check_finite:

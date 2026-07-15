@@ -21,8 +21,13 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install lyapax (dev extras)
-        run: pip install -e ".[dev]"
+      # dev + adaptive: without the adaptive extra, tests/test_adaptive_*.py
+      # pytest.importorskip("diffrax") and are silently skipped rather than
+      # run -- installing it here is what actually exercises the adaptive
+      # ODE integrator in CI, not just the docs job (which only runs it as
+      # a sphinx-gallery example, not as a test).
+      - name: Install lyapax (dev + adaptive extras)
+        run: pip install -e ".[dev,adaptive]"
 
       # tests/conftest.py forces JAX_PLATFORMS=cpu and jax_enable_x64=True,
       # so no extra env setup is needed here -- GitHub-hosted runners have

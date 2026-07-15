@@ -111,6 +111,18 @@ class LyapunovCheckpoint(NamedTuple):
     transient, across every resumed call so far -- same units as
     ``LyapunovResult.times``."""
 
+    dt: float = None
+    """The ``dt`` of the run that produced this checkpoint (a plain Python
+    float, not a traced array -- kept out of the tangent computation). On
+    ``resume=``, ``lyapunov_spectrum`` checks this against the ``dt`` of
+    the resuming call and raises if they differ, since silently resuming
+    under a different ``dt`` would misinterpret ``elapsed_time``/``history``
+    without any structural (shape-based) sign of the mismatch. This does
+    *not* validate ``step_fn``/system parameters/integrator -- those aren't
+    identifiable from an opaque JAX closure -- so a same-``dt`` checkpoint
+    can still be resumed against a different system silently; ``dt`` is
+    only the one stable field cheap enough to check automatically."""
+
 
 class LyapunovResult(NamedTuple):
     exponents: jnp.ndarray
@@ -245,6 +257,17 @@ def convergence_drift(
 
     :return: ``ConvergenceDrift(absolute, relative, converged)``.
 
+    A single ``relative <= tol`` pass is evidence of settling, not a
+    statistical stopping rule: pick ``tol`` as a mix of absolute and
+    relative tolerance (``relative`` alone blows up for exponents near
+    zero -- see ``ConvergenceDrift.relative``'s docstring, and use
+    ``absolute`` directly for those columns), and prefer requiring several
+    *consecutive* resumed chunks to report ``converged`` before trusting
+    it, rather than stopping at the first pass. CPU/GPU QR and reduction
+    differences are not bitwise-identical, so the exact chunk where a
+    tight ``tol`` first passes can differ by backend even for the same
+    system and seed.
+
     Usage
     -----
     >>> import jax
@@ -289,6 +312,12 @@ def kaplan_yorke_dimension(
     ``j + sum(exponents[:j]) / |exponents[j]|`` where ``j`` is the largest
     prefix length with a non-negative partial sum. Pure post-processing of
     ``LyapunovResult.exponents`` -- no tangent-propagation or QR involved.
+
+    Eager, host-side post-processing: the crossing index ``j`` is found by
+    branching on Python ``float``s in a Python loop, not ``jnp.where``/
+    ``lax.cond``, so this is not ``jax.jit``-, ``jax.vmap``-, or
+    ``jax.grad``-compatible. Call it after (not inside) any transformed
+    code, on a concrete ``exponents`` array.
 
     :param exponents: ``(k,)`` exponents, sorted descending -- exactly
         ``LyapunovResult.exponents``'s own order, so
@@ -505,6 +534,15 @@ def lyapunov_spectrum(
                 f"state0 has dimension {d} -- resume must come from a "
                 "checkpoint of a run on the same system."
             )
+        if resume.dt is not None and float(resume.dt) != float(dt):
+            raise ValueError(
+                f"resume.dt ({resume.dt!r}) does not match this call's dt "
+                f"({dt!r}) -- resuming under a different dt would "
+                "misinterpret the checkpointed elapsed_time/history without "
+                "any shape-based sign of the mismatch. Use the same dt as "
+                "the checkpointed run, or start a fresh run instead of "
+                "resuming."
+            )
         resume_k = resume.Y.shape[1]
         if k is None:
             k = resume_k
@@ -590,6 +628,7 @@ def lyapunov_spectrum(
     checkpoint = LyapunovCheckpoint(
         state=final_state, Y=final_Y,
         cum_log_growth=final_cum_log_growth, elapsed_time=result.times[-1],
+        dt=float(dt),
     )
     result = result._replace(checkpoint=checkpoint)
     if check_finite:

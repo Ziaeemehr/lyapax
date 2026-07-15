@@ -178,6 +178,23 @@ def test_dde_resume_rejects_dimension_mismatch():
         )
 
 
+def test_dde_resume_rejects_dt_mismatch():
+    # tau doubled alongside dt so tau_steps (== round(tau / dt)) -- and
+    # therefore the ring-buffer horizon/shape -- stays identical; otherwise
+    # the shape check above would fire first and this wouldn't isolate the
+    # dt check.
+    a, tau, dt = 0.5, 0.3, 1e-2
+    problem1 = dde_problem(systems.linear_scalar_dde(a=a), state0=jnp.array([1.0]), tau=tau, dt=dt)
+    result1 = lyapunov_spectrum_dde(problem1, n_steps=1_000, k=1, renorm_every=5, t_transient=10.0)
+
+    problem2 = dde_problem(
+        systems.linear_scalar_dde(a=a), state0=jnp.array([1.0]), tau=2 * tau, dt=2 * dt)
+    with pytest.raises(ValueError, match="resume.dt"):
+        lyapunov_spectrum_dde(
+            problem2, n_steps=1_000, k=1, renorm_every=5, resume=result1.checkpoint,
+        )
+
+
 def test_transient_floor_prevents_bias_from_short_user_transient():
     """lyapunov_spectrum_dde internally floors t_transient to at least one
     full ring cycle (horizon*dt) -- see the module docstring's discussion

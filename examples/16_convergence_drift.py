@@ -34,6 +34,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 jax.config.update("jax_enable_x64", True)
+# QR and reduction ops are not bitwise-identical across backends, so the
+# chunk where a tight convergence_drift(tol=...) first passes can shift
+# between CPU and GPU -- report the backend alongside the result.
+print(f"JAX backend: {jax.default_backend()}")
 
 from lyapax import lyapunov_spectrum, ode_problem, systems
 from lyapax.core import convergence_drift

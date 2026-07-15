@@ -67,8 +67,10 @@ import jax.numpy as jnp
 
 try:
     import diffrax
+    import equinox as eqx
 except ImportError:  # pragma: no cover - exercised via the ImportError path below
     diffrax = None
+    eqx = None
 
 RHS = Callable[[jnp.ndarray], jnp.ndarray]
 Step = Callable[[jnp.ndarray], jnp.ndarray]
@@ -106,12 +108,19 @@ def diffrax_adaptive_step(
     :param max_steps: safety cap on internal accept+reject iterations per
         ``dt`` advance, so a misbehaving ``rhs``/tolerance combination loops
         a bounded number of times inside ``jax.lax.while_loop`` rather than
-        running away; does not raise if hit, silently returns the state
-        reached so far (mirrors ``diffrax.diffeqsolve``'s own ``max_steps``
-        behavior of returning whatever was reached -- check
-        ``lyapunov_spectrum(..., check_finite=True)`` to catch a resulting
-        divergence downstream instead of silently accepting a truncated
-        step here).
+        running away. Unlike ``diffrax.diffeqsolve`` (which returns
+        whatever was reached when ``max_steps`` is hit unless
+        ``throw=True``), exhausting ``max_steps`` here always raises via
+        ``equinox.error_if`` -- returning a state from an earlier time than
+        the requested ``t1`` while ``lyapunov_spectrum`` advances its
+        elapsed-time denominator by the full ``dt`` regardless would
+        silently mis-associate exponent with elapsed time, which
+        ``check_finite=True`` cannot detect (a truncated step is still
+        finite). ``equinox.error_if`` raises immediately in eager mode and
+        under ``jax.jit``/``jax.vmap``; see its docstring for the
+        ``EQX_ON_ERROR`` environment variable if you need to disable this
+        check or substitute NaN instead. Raise ``max_steps`` or loosen
+        ``rtol``/``atol`` if this triggers on a well-posed system.
 
     Usage
     -----
@@ -188,7 +197,16 @@ def diffrax_adaptive_step(
                         new_controller_state, new_made_jump, n_steps + 1)
 
             final_carry = jax.lax.while_loop(cond_fn, body_fn, init_carry)
-            _tprev, _tnext, y_final, _ss, _cs, _mj, _n = final_carry
+            tprev_final, _tnext, y_final, _ss, _cs, _mj, n_steps_final = final_carry
+            y_final = eqx.error_if(
+                y_final,
+                (tprev_final < t1) & (n_steps_final >= max_steps),
+                "lyapax.adaptive.diffrax_adaptive_step: max_steps exhausted "
+                "before completing this dt advance -- the returned state is "
+                "from an earlier time than requested, which would silently "
+                "corrupt the caller's elapsed-time accounting. Raise "
+                "max_steps or loosen rtol/atol.",
+            )
             return y_final
 
         return step
