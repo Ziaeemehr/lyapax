@@ -2,17 +2,6 @@
 Linear ODE: exact Lyapunov spectrum
 ====================================
 
-.. image:: https://colab.research.google.com/assets/colab-badge.svg
-   :target: https://colab.research.google.com/github/Ziaeemehr/lyapax/blob/main/docs/auto_examples/01_linear_ode.ipynb
-   :alt: Open In Colab
-
-Install lyapax when running this notebook on Colab:
-
-.. code-block:: bash
-
-   %%bash
-   pip install -q "lyapax[examples]"
-
 The simplest possible correctness check for the Benettin/QR engine: for a
 linear system ``x' = A x``, the Lyapunov spectrum is *exactly* the real
 parts of the eigenvalues of ``A`` -- no chaos, no literature value to
