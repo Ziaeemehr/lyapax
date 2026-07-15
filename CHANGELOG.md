@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-15
+
 ### Fixed
 
 - README no longer claims DDE delays are integer-step only; it now
@@ -98,5 +100,6 @@ Initial release.
 - GitHub Actions CI (pytest + ruff on Python 3.11/3.12) and a PyPI
   trusted-publishing release workflow.
 
-[Unreleased]: https://github.com/Ziaeemehr/lyapax/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Ziaeemehr/lyapax/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Ziaeemehr/lyapax/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Ziaeemehr/lyapax/releases/tag/v0.1.0
