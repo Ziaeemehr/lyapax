@@ -10,19 +10,36 @@
 JAX-native Lyapunov exponent computation for ODEs and DDEs, via the
 Benettin/QR method with `jax.jvp`/`jax.vmap` tangent propagation.
 
+
+## 📚 Documentation
+
+Looking for the documentation?
+
+**➡️ https://lyapax.readthedocs.io/en/latest/**
+
+It includes:
+- Installation guide
+- Quick start tutorial
+- API reference
+- Examples and gallery
+- Validation, benchmarks, and implementation details
+
+
 ## Install
 
 ```bash
 pip install lyapax
 ```
 
-For development (running the test suite or examples), install from a clone instead:
+### Development installation
+
+If you plan to contribute, run the test suite, or build the documentation, clone the repository and install the appropriate extras:
 
 ```bash
-pip install -e ".[dev]"      # core + pytest/scipy for the test suite
-pip install -e ".[examples]" # + matplotlib, to run examples/
-pip install -e ".[docs]"     # + sphinx/sphinx-gallery, to build docs/
-pip install -e ".[adaptive]" # + diffrax, for lyapax.adaptive
+pip install -e ".[dev]"       # testing
+pip install -e ".[examples]"  # example scripts
+pip install -e ".[docs]"      # documentation
+pip install -e ".[adaptive]"  # Diffrax backend
 ```
 
 Requires `jax>=0.10`, Python `>=3.11`.
