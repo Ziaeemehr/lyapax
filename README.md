@@ -136,6 +136,7 @@ Runnable, sphinx-gallery-formatted demos in `examples/` (`pip install
 |---|---|
 | `00_time_series_sanity_check.py` | Inspecting the raw simulated time series before computing exponents |
 | `01_linear_ode.py` | Exact-eigenvalue sanity check for the QR engine |
+| `01b_custom_system.py` | Writing your own `rhs` from scratch, no `lyapax.systems` |
 | `02_chaotic_maps.py` | 1D/2D maps with closed-form exponents |
 | `03_chaotic_flows.py` | Lorenz/Rössler, the standard chaotic-ODE benchmarks |
 | `04_linear_network.py` | Coupled network vs. exact Jacobian eigenvalues |
