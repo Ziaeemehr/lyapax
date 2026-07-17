@@ -48,9 +48,13 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 
 from lyapax import lyapunov_spectrum, ode_problem
-from lyapax import systems
 
-rhs = systems.lorenz(sigma=10.0, rho=28.0, beta=8.0 / 3.0)
+sigma, rho, beta = 10.0, 28.0, 8.0 / 3.0
+
+def rhs(state):
+    x, y, z = state
+    return jnp.array([sigma * (y - x), x * (rho - z) - y, x * y - beta * z])
+
 problem = ode_problem(rhs, state0=jnp.array([1.0, 1.0, 1.0]), dt=1e-2)
 
 result = lyapunov_spectrum(
@@ -61,6 +65,11 @@ print(result.exponents)  # ~ [0.906, 0.0, -14.57]
 
 `result.history` gives the running per-column estimate at each
 renormalization point, for checking convergence.
+
+`rhs` is just a plain `state -> jnp.ndarray` function - write your own for
+any system. `lyapax.systems` has this Lorenz system and other standard
+test systems (Rössler, Kuramoto, ...) prebuilt, if you'd rather not retype
+them.
 
 ## Method and scope
 
