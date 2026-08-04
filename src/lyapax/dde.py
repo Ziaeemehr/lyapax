@@ -58,7 +58,13 @@ from typing import Callable, NamedTuple
 import jax
 import jax.numpy as jnp
 
-from .core import LyapunovResult, _check_finite, _run_renorm_scan, _warn_if_not_x64
+from .core import (
+    LyapunovResult,
+    _check_finite,
+    _run_renorm_scan,
+    _validate_save_states,
+    _warn_if_not_x64,
+)
 from .network import Network
 from .simulator import make_step_fn
 
@@ -481,6 +487,8 @@ def lyapunov_spectrum_dde(
         seed: int = 0,
         check_finite: bool = False,
         resume: DDECheckpoint | None = None,
+        save_states: bool = False,
+        decimate: int = 1,
 ) -> LyapunovResult:
     """
     Compute the (partial or full) Lyapunov spectrum of a fixed-delay DDE,
@@ -540,6 +548,12 @@ def lyapunov_spectrum_dde(
         ``lyapax.core.lyapunov_spectrum``'s ``resume``. Mutually exclusive
         with a nonzero ``t_transient``. ``k`` must match the checkpoint's
         tracked dimension if given explicitly (defaults to it otherwise).
+    save_states, decimate : see ``lyapax.core.lyapunov_spectrum`` (same
+        meaning and validation). ``result.trajectory`` saves ``state``
+        only (shape ``(n_saves, n_sv, n_nodes)``), not the ring buffer
+        ``buf`` -- ``buf`` is a window of *past* states, so it is
+        redundant with the series itself and, for a long delay/large
+        network, far larger.
 
     Returns
     -------
@@ -633,6 +647,7 @@ def lyapunov_spectrum_dde(
             f"n_steps ({n_steps}) must be a multiple of renorm_every "
             f"({renorm_every})."
         )
+    decimate_stride = _validate_save_states(save_states, decimate, renorm_every)
 
     if resume is not None:
         state0, buf0, t0 = resume.state, resume.buf, resume.t
@@ -652,14 +667,19 @@ def lyapunov_spectrum_dde(
         return (Y_flat[:d_state].reshape(state_shape + (k,)),
                 Y_flat[d_state:].reshape(buf_shape + (k,)))
 
-    def _advance(state, buf, t, Y_state, Y_buf, n_substeps):
+    def _advance(state, buf, t, Y_state, Y_buf, n_substeps, decimate=None):
         """Propagate (state, buf) and their tangent pair jointly for
         n_substeps raw steps, then QR once -- t lives in the scanned carry
         and is re-read/incremented every raw step (not closed over once per
         block): closing over a stale t was verified to silently diverge
         from the correct answer during design review (no crash/NaN, just a
         wrong number), since t drives the ring-buffer's modular read/write
-        indices and must match what step_fn itself sees at each raw step."""
+        indices and must match what step_fn itself sees at each raw step.
+
+        When ``decimate`` is an int, also returns ``state`` (not ``buf`` --
+        see ``lyapunov_spectrum_dde``'s ``save_states`` docstring) every
+        ``decimate`` raw steps, as a seventh value, shape
+        ``(n_substeps // decimate, *state.shape)``."""
         def _raw_step(carry_inner, _):
             state_i, buf_i, t_i, Y_state_i, Y_buf_i = carry_inner
 
@@ -678,12 +698,25 @@ def lyapunov_spectrum_dde(
 
             return (new_state, new_buf, t_i + 1, dY_state, dY_buf), None
 
-        (state, buf, t, Y_state, Y_buf), _ = jax.lax.scan(
-            _raw_step, (state, buf, t, Y_state, Y_buf), None, length=n_substeps)
+        if decimate is None:
+            (state, buf, t, Y_state, Y_buf), _ = jax.lax.scan(
+                _raw_step, (state, buf, t, Y_state, Y_buf), None,
+                length=n_substeps)
+            Q_flat, R = jnp.linalg.qr(_flatten(Y_state, Y_buf))
+            Q_state, Q_buf = _unflatten(Q_flat)
+            return state, buf, t, Q_state, Q_buf, R
 
+        def _chunk(carry_inner, _):
+            carry_inner, _ = jax.lax.scan(
+                _raw_step, carry_inner, None, length=decimate)
+            return carry_inner, carry_inner[0]
+
+        (state, buf, t, Y_state, Y_buf), saved = jax.lax.scan(
+            _chunk, (state, buf, t, Y_state, Y_buf), None,
+            length=n_substeps // decimate)
         Q_flat, R = jnp.linalg.qr(_flatten(Y_state, Y_buf))
         Q_state, Q_buf = _unflatten(Q_flat)
-        return state, buf, t, Q_state, Q_buf, R
+        return state, buf, t, Q_state, Q_buf, R, saved
 
     # Unconditional (unlike core.py's ODE transient, which is skippable via
     # t_transient=0.0): a DDE always needs at least one full ring cycle
@@ -707,12 +740,21 @@ def lyapunov_spectrum_dde(
             _transient_block, (state0, buf0, t0, Y_state0, Y_buf0), None,
             length=n_transient // renorm_every)
 
-    def _renorm_block(carry, _):
-        state, buf, t, Y_state, Y_buf = carry
-        state, buf, t, Y_state, Y_buf, R = _advance(
-            state, buf, t, Y_state, Y_buf, renorm_every)
-        log_growth = jnp.log(jnp.abs(jnp.diag(R)))
-        return (state, buf, t, Y_state, Y_buf), log_growth
+    if decimate_stride is None:
+        def _renorm_block(carry, _):
+            state, buf, t, Y_state, Y_buf = carry
+            state, buf, t, Y_state, Y_buf, R = _advance(
+                state, buf, t, Y_state, Y_buf, renorm_every)
+            log_growth = jnp.log(jnp.abs(jnp.diag(R)))
+            return (state, buf, t, Y_state, Y_buf), log_growth
+    else:
+        def _renorm_block(carry, _):
+            state, buf, t, Y_state, Y_buf = carry
+            state, buf, t, Y_state, Y_buf, R, saved = _advance(
+                state, buf, t, Y_state, Y_buf, renorm_every,
+                decimate=decimate_stride)
+            log_growth = jnp.log(jnp.abs(jnp.diag(R)))
+            return (state, buf, t, Y_state, Y_buf), (log_growth, saved)
 
     n_renorm = n_steps // renorm_every
     cum_log_growth0 = resume.cum_log_growth if resume is not None else 0.0
@@ -720,6 +762,7 @@ def lyapunov_spectrum_dde(
     final_carry, final_cum_log_growth, result = _run_renorm_scan(
         _renorm_block, (state0, buf0, t0, Y_state0, Y_buf0), n_renorm, renorm_every, dt,
         cum_log_growth0=cum_log_growth0, elapsed_time0=elapsed_time0,
+        decimate=decimate_stride,
     )
     final_state, final_buf, final_t, final_Y_state, final_Y_buf = final_carry
     checkpoint = DDECheckpoint(

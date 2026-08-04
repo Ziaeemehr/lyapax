@@ -9,14 +9,18 @@ tangent-propagation or QR math, it only batches the existing engine, so
 correctness here means "matches the loop exactly," not a new analytic
 reference.
 """
+import warnings
+
+import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from lyapax.core import lyapunov_spectrum
 from lyapax.coupling import kuramoto_coupling, linear_coupling
 from lyapax.network import make_network_step_fn, make_parametrized_network_step_fn
 from lyapax.simulator import ModelSpec, Parameter, StateVar, build_jax_dfun
-from lyapax.sweep import sweep_lyapunov_spectrum
+from lyapax.sweep import _warn_if_trajectory_too_large, sweep_lyapunov_spectrum, sweep_trajectory
 
 
 def _kuramoto_model(omega: float) -> ModelSpec:
@@ -123,3 +127,178 @@ def test_initial_condition_sweep_matches_python_loop():
     assert swept.exponents.shape == (n_sweep, 2)
     for row in np.array(swept.exponents):
         np.testing.assert_allclose(row, expected, atol=3e-3)
+
+
+# ---------------------------------------------------------------------------
+# save_states / decimate / batch_size (memory-bounded sweeps + sweep_trajectory)
+# ---------------------------------------------------------------------------
+
+def _linear_sweep_fixture(n_sweep=4):
+    """Small, non-chaotic linear network -- deterministic, no transient
+    needed for exact-value comparisons, fast enough for a handful of
+    ``save_states``/chunking variants."""
+    weights = jnp.array([[0., 1.], [1., 0.]])
+    gamma = -1.5
+    model = _linear_node_model(gamma)
+    dfun = build_jax_dfun(model)
+    dt = 1e-3
+    step_p = make_parametrized_network_step_fn(
+        dfun, weights, model.cvar_indices, dt, linear_coupling(a=1.0, b=0.0))
+    state0 = jnp.array([0.2, -0.3])
+    G_values = jnp.linspace(0.2, 1.0, n_sweep)
+    params_batch = {"gamma": jnp.full((n_sweep,), gamma), "G": G_values}
+    sweep_kwargs = dict(dt=dt, n_steps=500, renorm_every=10, k=2, t_transient=2.0)
+    return step_p, state0, params_batch, sweep_kwargs
+
+
+def test_sweep_save_states_matches_single_call_per_row():
+    step_p, state0, params_batch, sweep_kwargs = _linear_sweep_fixture(n_sweep=4)
+    decimate = 5
+    swept = sweep_lyapunov_spectrum(
+        step_p, state0, params_batch, save_states=True, decimate=decimate,
+        **sweep_kwargs)
+
+    n_saves = sweep_kwargs["n_steps"] // decimate
+    assert swept.trajectory.shape == (4, n_saves, 2)
+    assert swept.save_times.shape == (4, n_saves)
+
+    for i in range(4):
+        params_i = {k: v[i] for k, v in params_batch.items()}
+        single = lyapunov_spectrum(
+            lambda state, p=params_i: step_p(state, p), state0,
+            save_states=True, decimate=decimate, **sweep_kwargs)
+        np.testing.assert_array_equal(
+            np.array(swept.trajectory[i]), np.array(single.trajectory))
+        np.testing.assert_array_equal(
+            np.array(swept.save_times[i]), np.array(single.save_times))
+
+
+def test_sweep_batch_size_chunking_matches_unchunked():
+    step_p, state0, params_batch, sweep_kwargs = _linear_sweep_fixture(n_sweep=5)
+    decimate = 5
+
+    unchunked = sweep_lyapunov_spectrum(
+        step_p, state0, params_batch, save_states=True, decimate=decimate,
+        **sweep_kwargs)
+    chunked = sweep_lyapunov_spectrum(
+        step_p, state0, params_batch, save_states=True, decimate=decimate,
+        batch_size=2, **sweep_kwargs)  # 5 % 2 != 0 -- exercises a ragged chunk
+
+    np.testing.assert_array_equal(
+        np.array(chunked.exponents), np.array(unchunked.exponents))
+    np.testing.assert_array_equal(
+        np.array(chunked.history), np.array(unchunked.history))
+    np.testing.assert_array_equal(
+        np.array(chunked.times), np.array(unchunked.times))
+    np.testing.assert_array_equal(
+        np.array(chunked.trajectory), np.array(unchunked.trajectory))
+    np.testing.assert_array_equal(
+        np.array(chunked.save_times), np.array(unchunked.save_times))
+
+
+def test_sweep_trajectory_to_host_returns_numpy_other_fields_stay_device():
+    step_p, state0, params_batch, sweep_kwargs = _linear_sweep_fixture(n_sweep=3)
+    on_device = sweep_lyapunov_spectrum(
+        step_p, state0, params_batch, save_states=True, decimate=5,
+        batch_size=2, **sweep_kwargs)
+    on_host = sweep_lyapunov_spectrum(
+        step_p, state0, params_batch, save_states=True, decimate=5,
+        batch_size=2, trajectory_to_host=True, **sweep_kwargs)
+
+    assert isinstance(on_host.trajectory, np.ndarray)
+    assert not isinstance(on_host.trajectory, jax.Array)
+    assert isinstance(on_host.exponents, jax.Array)
+    np.testing.assert_array_equal(on_host.trajectory, np.array(on_device.trajectory))
+
+
+def test_sweep_trajectory_matches_sweep_lyapunov_spectrum_trajectory():
+    """The standalone replay path (no tangent propagation) must reproduce
+    exactly the states the LE run saved -- same post-transient window,
+    same decimation stride."""
+    step_p, state0, params_batch, sweep_kwargs = _linear_sweep_fixture(n_sweep=4)
+    decimate = 5
+
+    swept = sweep_lyapunov_spectrum(
+        step_p, state0, params_batch, save_states=True, decimate=decimate,
+        **sweep_kwargs)
+    replayed_t, replayed_traj = sweep_trajectory(
+        step_p, state0, params_batch, dt=sweep_kwargs["dt"],
+        n_steps=sweep_kwargs["n_steps"], t_transient=sweep_kwargs["t_transient"],
+        renorm_every=sweep_kwargs["renorm_every"], decimate=decimate,
+    )
+
+    np.testing.assert_allclose(
+        np.array(replayed_traj), np.array(swept.trajectory), atol=1e-12)
+    np.testing.assert_allclose(
+        np.array(replayed_t), np.array(swept.save_times), atol=1e-12)
+
+
+def test_sweep_trajectory_batch_size_chunking_matches_unchunked():
+    step_p, state0, params_batch, sweep_kwargs = _linear_sweep_fixture(n_sweep=5)
+    decimate = 5
+
+    unchunked_t, unchunked_traj = sweep_trajectory(
+        step_p, state0, params_batch, dt=sweep_kwargs["dt"],
+        n_steps=sweep_kwargs["n_steps"], t_transient=sweep_kwargs["t_transient"],
+        renorm_every=sweep_kwargs["renorm_every"], decimate=decimate,
+    )
+    chunked_t, chunked_traj = sweep_trajectory(
+        step_p, state0, params_batch, dt=sweep_kwargs["dt"],
+        n_steps=sweep_kwargs["n_steps"], t_transient=sweep_kwargs["t_transient"],
+        renorm_every=sweep_kwargs["renorm_every"], decimate=decimate,
+        batch_size=2,
+    )
+
+    np.testing.assert_array_equal(np.array(chunked_traj), np.array(unchunked_traj))
+    np.testing.assert_array_equal(np.array(chunked_t), np.array(unchunked_t))
+
+
+# ---------------------------------------------------------------------------
+# Size guard: warn (not raise -- the sweep still runs) when an unchunked
+# save_states=True call would materialize a very large trajectory at once.
+# ---------------------------------------------------------------------------
+
+def test_warns_when_unchunked_trajectory_exceeds_threshold():
+    with pytest.warns(UserWarning, match="batch_size"):
+        _warn_if_trajectory_too_large(
+            n_sweep=1000, n_saves=1000, d=100, itemsize=8, batch_size=None,
+            threshold_bytes=100,
+        )
+
+
+def test_no_warning_below_threshold():
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _warn_if_trajectory_too_large(
+            n_sweep=10, n_saves=10, d=10, itemsize=8, batch_size=None,
+            threshold_bytes=1 << 30,
+        )
+
+
+def test_no_warning_when_batch_size_given():
+    """batch_size already bounds peak memory to one chunk -- the guard is
+    about the unchunked case specifically."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _warn_if_trajectory_too_large(
+            n_sweep=1000, n_saves=1000, d=100, itemsize=8, batch_size=8,
+            threshold_bytes=100,
+        )
+
+
+def test_sweep_lyapunov_spectrum_warns_for_large_unchunked_save_states():
+    step_p, state0, params_batch, sweep_kwargs = _linear_sweep_fixture(n_sweep=4)
+    with pytest.warns(UserWarning, match="batch_size"):
+        sweep_lyapunov_spectrum(
+            step_p, state0, params_batch, save_states=True, decimate=5,
+            _trajectory_warn_threshold_bytes=1,  # force the warning path
+            **sweep_kwargs)
+
+
+def test_sweep_lyapunov_spectrum_no_warning_at_default_threshold():
+    step_p, state0, params_batch, sweep_kwargs = _linear_sweep_fixture(n_sweep=4)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        sweep_lyapunov_spectrum(
+            step_p, state0, params_batch, save_states=True, decimate=5,
+            **sweep_kwargs)

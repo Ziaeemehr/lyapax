@@ -155,20 +155,95 @@ class LyapunovResult(NamedTuple):
     buffer's state, since a DDE's Markovian state is ``(state, buf)``
     together, not ``state`` alone)."""
 
+    trajectory: jnp.ndarray | None = None
+    """``(n_saves, *state_shape)`` state time series, or ``None`` unless the
+    run was made with ``save_states=True`` (the default is ``None``: the
+    engine carries the state through its scan but does not emit it, so a
+    plain LE run allocates nothing per step).
+
+    ``n_saves = n_steps // decimate``; ``state_shape`` is ``(d,)`` for the
+    ODE engine and ``(n_sv, n_nodes)`` for the DDE engine (which saves
+    ``state`` only, not the delay ring buffer -- ``buf`` is a window of
+    *past* states, so it is redundant with the series itself and far
+    larger). Rows are the states the Lyapunov accumulation actually ran
+    on, sampled every ``decimate`` steps, covering exactly the same window
+    as ``history``/``times``: the transient is never saved, and the first
+    row is the state ``decimate`` steps *after* the transient ended (not
+    the post-transient state itself). Use it to derive further per-run
+    features -- order parameters, spectra, correlations -- from the same
+    integration that produced ``exponents``, rather than re-simulating."""
+
+    save_times: jnp.ndarray | None = None
+    """``(n_saves,)`` elapsed time at each row of ``trajectory``, in the same
+    units and measured from the same origin as ``times`` (end of the
+    transient, offset by a resumed checkpoint's ``elapsed_time``). ``None``
+    whenever ``trajectory`` is."""
+
+
+def _n_transient_steps(t_transient: float, dt: float, renorm_every: int) -> int:
+    """Number of raw steps in the transient phase, rounded to a whole number
+    of ``renorm_every``-sized renormalization blocks (at least one).
+
+    Shared so that anything wanting to land on the *same* post-transient
+    state as a ``lyapunov_spectrum`` run -- notably
+    ``lyapax.sweep.sweep_trajectory``, which replays the dynamics without
+    tangent propagation -- reproduces this rounding exactly rather than
+    re-deriving it and drifting by a block.
+    """
+    return renorm_every * max(1, round(t_transient / dt / renorm_every))
+
+
+def _validate_save_states(save_states: bool, decimate: int, renorm_every: int):
+    """Shared ``save_states``/``decimate`` validation for both engines.
+
+    Returns the stride to hand to ``_advance``/``_run_renorm_scan``:
+    ``decimate`` when saving, ``None`` (do not emit) when not.
+    """
+    if not save_states:
+        if decimate != 1:
+            raise ValueError(
+                f"decimate={decimate} was given with save_states=False, "
+                "which would silently do nothing -- no trajectory is "
+                "recorded at all unless save_states=True. Pass "
+                "save_states=True to keep the decimated time series, or "
+                "drop decimate."
+            )
+        return None
+    if decimate < 1:
+        raise ValueError(f"decimate must be >= 1; got {decimate}.")
+    if renorm_every % decimate != 0:
+        raise ValueError(
+            f"renorm_every ({renorm_every}) must be a multiple of decimate "
+            f"({decimate}) -- states are emitted from within a "
+            "renormalization block, so the sampling stride has to divide "
+            "the block length. For a stride coarser than renorm_every, use "
+            "decimate=renorm_every and slice the result "
+            "(result.trajectory[::m])."
+        )
+    return decimate
+
 
 def _run_renorm_scan(
         renorm_block, carry0, n_renorm: int, renorm_every: int, dt: float,
         cum_log_growth0: jnp.ndarray | float = 0.0,
         elapsed_time0: jnp.ndarray | float = 0.0,
+        decimate: int | None = None,
 ):
     """Shared tail between ``lyapunov_spectrum`` (ODE) and
-    ``lyapax.dde.lyapunov_spectrum_dde``: scan ``renorm_block`` (which must
-    return ``(new_carry, log_growth (k,))`` per call, log-growth already
-    ``log|diag(R)|`` from one QR-renormalization block) ``n_renorm`` times,
-    then turn the per-block log-growth into cumulative running exponent
-    estimates. Not part of the public API -- the only thing that differs
-    between the ODE and DDE engines is what one renorm block's tangent
-    propagation looks like, not this bookkeeping.
+    ``lyapax.dde.lyapunov_spectrum_dde``: scan ``renorm_block`` ``n_renorm``
+    times, then turn the per-block log-growth into cumulative running
+    exponent estimates. Not part of the public API -- the only thing that
+    differs between the ODE and DDE engines is what one renorm block's
+    tangent propagation (and, now, state emission) looks like, not this
+    bookkeeping.
+
+    When ``decimate is None``, ``renorm_block`` must return
+    ``(new_carry, log_growth (k,))`` per call (log-growth already
+    ``log|diag(R)|`` from one QR-renormalization block). When ``decimate``
+    is an int, it must instead return ``(new_carry, (log_growth (k,), saved))``,
+    where ``saved`` is that block's decimated states, shape
+    ``(renorm_every // decimate, *state_shape)`` -- flattened here into
+    ``trajectory``, shape ``(n_renorm * renorm_every // decimate, *state_shape)``.
 
     ``cum_log_growth0``/``elapsed_time0`` offset the cumulative sum/elapsed
     time before turning them into ``history``/``times`` -- zero (the
@@ -179,8 +254,19 @@ def _run_renorm_scan(
     ``lyapunov_spectrum`` needs to build the next ``LyapunovCheckpoint``;
     ``lyapunov_spectrum_dde`` ignores them (no resume support yet).
     """
-    final_carry, log_growth_per_block = jax.lax.scan(
-        renorm_block, carry0, None, length=n_renorm)
+    if decimate is None:
+        final_carry, log_growth_per_block = jax.lax.scan(
+            renorm_block, carry0, None, length=n_renorm)
+        trajectory = save_times = None
+    else:
+        final_carry, (log_growth_per_block, saved_per_block) = jax.lax.scan(
+            renorm_block, carry0, None, length=n_renorm)
+        # saved_per_block: (n_renorm, renorm_every // decimate, *state_shape)
+        # -> (n_saves, *state_shape), in run order.
+        trajectory = saved_per_block.reshape(
+            (-1,) + saved_per_block.shape[2:])
+        n_saves = trajectory.shape[0]
+        save_times = elapsed_time0 + (jnp.arange(1, n_saves + 1) * decimate) * dt
 
     # (n_renorm, k), raw (not display-sorted) column order
     cum_log_growth = jnp.cumsum(log_growth_per_block, axis=0) + cum_log_growth0
@@ -191,7 +277,10 @@ def _run_renorm_scan(
     history = history[:, order]
     exponents = history[-1]
 
-    result = LyapunovResult(exponents=exponents, history=history, times=block_times)
+    result = LyapunovResult(
+        exponents=exponents, history=history, times=block_times,
+        trajectory=trajectory, save_times=save_times,
+    )
     return final_carry, cum_log_growth[-1], result
 
 
@@ -419,6 +508,8 @@ def lyapunov_spectrum(
         seed: int = 0,
         check_finite: bool = False,
         resume: LyapunovCheckpoint | None = None,
+        save_states: bool = False,
+        decimate: int = 1,
 ) -> LyapunovResult:
     """
     Compute the (partial or full) Lyapunov spectrum of ``step_fn`` along the
@@ -474,6 +565,21 @@ def lyapunov_spectrum(
         See :ref:`16_convergence_drift.py
         <sphx_glr_auto_examples_16_convergence_drift.py>` for the
         run-inspect-resume workflow this enables.
+    save_states : if True, also return the state time series the Lyapunov
+        accumulation ran on, as ``result.trajectory``/``result.save_times``
+        (``None``/``None`` when False, the default). Emitted from the same
+        scan that computes the exponents -- no extra dynamics cost, and the
+        states line up exactly with the run the exponents came from
+        (unlike re-simulating separately, e.g. via
+        ``lyapax.utils.simulate_trajectory``). The transient is never
+        saved. Mind memory: a full-resolution trajectory is
+        ``n_steps * d`` floats; use ``decimate`` to thin it, and see
+        ``lyapax.sweep.sweep_lyapunov_spectrum``'s ``batch_size`` when
+        vmapping this over many parameter sets at once.
+    decimate : save every this many steps when ``save_states=True`` (must
+        divide ``renorm_every``; ignored, and must be left at 1, when
+        ``save_states=False``). ``decimate=1`` (the default) saves every
+        step.
 
     Returns
     -------
@@ -565,6 +671,7 @@ def lyapunov_spectrum(
             f"n_steps ({n_steps}) must be a multiple of renorm_every "
             f"({renorm_every})."
         )
+    decimate_stride = _validate_save_states(save_states, decimate, renorm_every)
 
     if resume is not None:
         state0, Y0 = resume.state, resume.Y
@@ -573,12 +680,18 @@ def lyapunov_spectrum(
         Y0 = jax.random.normal(key, (d, k), dtype=state0.dtype)
         Y0, _ = jnp.linalg.qr(Y0)
 
-    def _advance(state, Y, n_substeps):
+    def _advance(state, Y, n_substeps, decimate=None):
         """Propagate state and tangent matrix jointly for n_substeps raw
         steps, then QR once. Used for both the transient (alignment) phase
         and each accumulation block, so a long transient still gets
         periodic renormalization and can't overflow (the ``renorm_every``
-        overflow risk)."""
+        overflow risk).
+
+        When ``decimate`` is an int, also returns the state every
+        ``decimate`` raw steps (shape ``(n_substeps // decimate, *state.shape)``)
+        as a fourth value -- an inner ``lax.scan`` emitting only every
+        ``decimate``-th state, so nothing is materialized for the
+        skipped steps in between."""
         def _inner(carry_inner, _):
             state_i, Y_i = carry_inner
 
@@ -591,9 +704,20 @@ def lyapunov_spectrum(
             new_state = new_state_rep[0]
             return (new_state, new_Y), None
 
-        (state, Y), _ = jax.lax.scan(_inner, (state, Y), None, length=n_substeps)
+        if decimate is None:
+            (state, Y), _ = jax.lax.scan(_inner, (state, Y), None, length=n_substeps)
+            Q, R = jnp.linalg.qr(Y)
+            return state, Q, R
+
+        def _chunk(carry_inner, _):
+            carry_inner, _ = jax.lax.scan(
+                _inner, carry_inner, None, length=decimate)
+            return carry_inner, carry_inner[0]
+
+        (state, Y), saved = jax.lax.scan(
+            _chunk, (state, Y), None, length=n_substeps // decimate)
         Q, R = jnp.linalg.qr(Y)
-        return state, Q, R
+        return state, Q, R, saved
 
     if t_transient > 0.0 and resume is None:
         # Chunk the transient at the same cadence as the main run: the
@@ -601,7 +725,7 @@ def lyapunov_spectrum(
         # also letting the tangent vectors align to the Oseledets subspaces
         # (see M1 test notes) -- without this, a random initial Y0 biases
         # the estimate for a linear/weakly-mixing system noticeably.
-        n_transient = renorm_every * max(1, round(t_transient / dt / renorm_every))
+        n_transient = _n_transient_steps(t_transient, dt, renorm_every)
 
         def _transient_block(carry, _):
             state, Y = carry
@@ -611,11 +735,19 @@ def lyapunov_spectrum(
         (state0, Y0), _ = jax.lax.scan(
             _transient_block, (state0, Y0), None, length=n_transient // renorm_every)
 
-    def _renorm_block(carry, _):
-        state, Y = carry
-        state, Q, R = _advance(state, Y, renorm_every)
-        log_growth = jnp.log(jnp.abs(jnp.diag(R)))
-        return (state, Q), log_growth
+    if decimate_stride is None:
+        def _renorm_block(carry, _):
+            state, Y = carry
+            state, Q, R = _advance(state, Y, renorm_every)
+            log_growth = jnp.log(jnp.abs(jnp.diag(R)))
+            return (state, Q), log_growth
+    else:
+        def _renorm_block(carry, _):
+            state, Y = carry
+            state, Q, R, saved = _advance(
+                state, Y, renorm_every, decimate=decimate_stride)
+            log_growth = jnp.log(jnp.abs(jnp.diag(R)))
+            return (state, Q), (log_growth, saved)
 
     n_renorm = n_steps // renorm_every
     cum_log_growth0 = resume.cum_log_growth if resume is not None else 0.0
@@ -623,6 +755,7 @@ def lyapunov_spectrum(
     final_carry, final_cum_log_growth, result = _run_renorm_scan(
         _renorm_block, (state0, Y0), n_renorm, renorm_every, dt,
         cum_log_growth0=cum_log_growth0, elapsed_time0=elapsed_time0,
+        decimate=decimate_stride,
     )
     final_state, final_Y = final_carry
     checkpoint = LyapunovCheckpoint(

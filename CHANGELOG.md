@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `save_states`/`decimate` on `lyapunov_spectrum` and
+  `lyapunov_spectrum_dde`: optionally emit the state time series the
+  Lyapunov accumulation ran on (`result.trajectory`/`result.save_times`),
+  from the same scan that computes the exponents -- no extra dynamics
+  cost, and the states line up exactly with the run the exponents came
+  from. Off by default (`save_states=False`); existing calls and
+  `LyapunovResult` positional unpacking are unaffected.
+- `lyapax.sweep.sweep_lyapunov_spectrum` gains the same
+  `save_states`/`decimate`, plus `batch_size` (run a vmapped sweep in
+  memory-bounded chunks instead of one call over the whole grid) and
+  `trajectory_to_host` (park each chunk's trajectory on host via
+  `jax.device_get` before the next chunk starts).
+- `lyapax.sweep.sweep_trajectory`: the replay-only counterpart (via
+  `lyapax.utils.simulate_trajectory`, batched with `jax.vmap`) -- a
+  batched time series without the tangent-propagation/QR cost of
+  computing exponents, landing on the same post-transient window and
+  decimation stride as `sweep_lyapunov_spectrum(..., save_states=True)`.
+- `lyapax.utils.simulate_trajectory` gains `decimate` and `n_transient`
+  (both default to the previous behavior).
+- `examples/20_sweep_time_series_features.py`: derives the Kuramoto order
+  parameter from a swept trajectory alongside the swept Lyapunov spectrum.
+
 ## [0.2.0] - 2026-07-15
 
 ### Fixed

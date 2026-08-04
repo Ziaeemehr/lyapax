@@ -57,7 +57,12 @@ of an existing Lyapunov spectrum, computed for Lorenz and Rossler and
 matching published values, with the cumulative-sum-crossing-zero mechanics
 behind the formula plotted directly and the partial-spectrum guard
 (``d_total=``) shown raising instead of silently understating the
-dimension.
+dimension -- and a ``jax.vmap`` Kuramoto sweep with ``save_states=True``,
+deriving the order parameter from the swept state time series and showing
+it agrees with the swept Lyapunov spectrum on the synchronization
+transition, plus a memory-footprint comparison across ``decimate`` and a
+cross-check against the tangent-propagation-free
+``lyapax.sweep.sweep_trajectory`` replay path.
 
 New capability -> new demo: as engine features land (a new coupling kind, a
 new delay structure, a performance change, ...), add a runnable example
