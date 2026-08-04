@@ -289,7 +289,9 @@ def sweep_trajectory(
     n_transient = _n_transient_steps(t_transient, dt, renorm_every) if t_transient > 0.0 else 0
 
     def _run_one(params, state0_i):
-        step = lambda state: step_fn(state, params)
+        def step(state):
+            return step_fn(state, params)
+
         return simulate_trajectory(
             step, state0_i, n_steps, dt=dt, decimate=decimate,
             n_transient=n_transient,
