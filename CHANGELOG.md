@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-04
+
 ### Added
 
 - `save_states`/`decimate` on `lyapunov_spectrum` and
@@ -30,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (both default to the previous behavior).
 - `examples/20_sweep_time_series_features.py`: derives the Kuramoto order
   parameter from a swept trajectory alongside the swept Lyapunov spectrum.
+- `examples/21_kuramoto_le_and_time_series.py`: a minimal, fast
+  `sweep_lyapunov_spectrum(..., save_states=True)` demo plotting one
+  sweep point's saved phase time series next to its Lyapunov exponent
+  convergence.
+- `sweep_lyapunov_spectrum` warns (does not raise) when an unchunked
+  (`batch_size=None`) `save_states=True` call is estimated to materialize
+  more than ~1 GiB of trajectory on-device at once, naming `batch_size`
+  and `decimate` as the remedies.
 
 ## [0.2.0] - 2026-07-15
 
@@ -124,6 +134,7 @@ Initial release.
 - GitHub Actions CI (pytest + ruff on Python 3.11/3.12) and a PyPI
   trusted-publishing release workflow.
 
-[Unreleased]: https://github.com/Ziaeemehr/lyapax/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Ziaeemehr/lyapax/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Ziaeemehr/lyapax/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Ziaeemehr/lyapax/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Ziaeemehr/lyapax/releases/tag/v0.1.0

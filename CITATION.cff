@@ -7,8 +7,8 @@ authors:
     given-names: Abolfazl
     orcid: "https://orcid.org/0000-0002-4696-9947"
     affiliation: "Aix Marseille Univ, INSERM, INS, Institut de Neurosciences des Systèmes, Marseille, France"
-version: 0.1.0
-date-released: "2026-07-03"
+version: 0.3.0
+date-released: "2026-08-04"
 license: MIT
 repository-code: "https://github.com/Ziaeemehr/lyapax"
 url: "https://lyapax.readthedocs.io"
