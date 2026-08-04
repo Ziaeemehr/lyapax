@@ -62,7 +62,11 @@ deriving the order parameter from the swept state time series and showing
 it agrees with the swept Lyapunov spectrum on the synchronization
 transition, plus a memory-footprint comparison across ``decimate`` and a
 cross-check against the tangent-propagation-free
-``lyapax.sweep.sweep_trajectory`` replay path.
+``lyapax.sweep.sweep_trajectory`` replay path -- and a minimal, fast
+version of the same capability: a small ``sweep_lyapunov_spectrum`` call
+on the Kuramoto ODE with ``save_states=True``, plotting one grid point's
+saved phase time series next to its running Lyapunov exponent estimate in
+a single figure.
 
 New capability -> new demo: as engine features land (a new coupling kind, a
 new delay structure, a performance change, ...), add a runnable example
