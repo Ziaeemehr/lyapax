@@ -42,7 +42,7 @@ import numpy as np
 jax.config.update("jax_enable_x64", True)
 
 from lyapax.coupling import kuramoto_coupling
-from lyapax.network import network_step_parametrized, Network
+from lyapax.network import Network, network_step_parametrized
 from lyapax.simulator import ModelSpec, Parameter, StateVar, build_jax_dfun
 from lyapax.sweep import sweep_lyapunov_spectrum, sweep_trajectory
 
