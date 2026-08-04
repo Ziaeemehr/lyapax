@@ -279,10 +279,9 @@ def sweep_trajectory(
 
     Returns
     -------
-    ``(t, trajectory)`` -- ``t``: ``(n_sweep, n_saves)``; ``trajectory``:
-    ``(n_sweep, n_saves, d)``, or ``d``'s ``sweep_lyapunov_spectrum``
-    network-state shape if ``step_fn`` produces one. ``n_saves = n_steps
-    // decimate``. Row 0 is the state ``decimate`` steps after the
+    ``(t, trajectory)`` -- ``t``: ``(n_sweep, n_saves)``; ``trajectory``: ``(n_sweep, n_saves, d)``,
+    or ``d``'s ``sweep_lyapunov_spectrum`` network-state shape if ``step_fn`` produces one.
+    ``n_saves = n_steps // decimate``. Row 0 is the state ``decimate`` steps after the
     transient (not the post-transient state itself), same convention as
     ``lyapax.core.LyapunovResult.trajectory``.
     """

@@ -91,7 +91,7 @@ print(f"swept.trajectory.shape = {swept.trajectory.shape}  "
 
 # %%
 # --- a feature the exponents alone don't give: the Kuramoto order parameter ---
-# R(t) = |mean_i exp(i*theta_i(t))| -- 0 for incoherent phases, 1 for perfect lock.
+# R(t) = \|mean_i exp(i*theta_i(t))\| -- 0 for incoherent phases, 1 for perfect lock.
 order_parameter = jnp.abs(jnp.mean(jnp.exp(1j * swept.trajectory), axis=-1))  # (n_sweep, n_saves)
 mean_R = jnp.mean(order_parameter, axis=-1)  # (n_sweep,)
 
