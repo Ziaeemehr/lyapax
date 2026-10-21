@@ -80,6 +80,7 @@ Documentation = "https://lyapax.readthedocs.io"
 Repository = "https://github.com/Ziaeemehr/lyapax"
 Issues = "https://github.com/Ziaeemehr/lyapax/issues"
 Changelog = "https://github.com/Ziaeemehr/lyapax/blob/main/CHANGELOG.md"
+Funding = "https://github.com/sponsors/Ziaeemehr"
 
 [tool.setuptools]
 license-files = ["LICENSE"]
